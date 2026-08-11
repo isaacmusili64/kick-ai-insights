@@ -71,7 +71,14 @@ export const getPrediction = createServerFn({ method: "GET" })
         },
       };
     } catch (error) {
-      return { error: (error as Error).message } as const;
+      return {
+        error: (error as Error).message,
+        fixture: null,
+        prediction: null,
+        teams: null,
+        h2h: [],
+        leagueAvgGoals: 0,
+      };
     }
   });
 
