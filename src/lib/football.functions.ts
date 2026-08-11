@@ -93,19 +93,23 @@ export const getAiInsight = createServerFn({ method: "POST" })
     const key = process.env["LOVABLE_API_KEY"];
     if (!key) return { insight: null, error: "AI is not configured." };
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const system =
+      "You are a football analyst. You receive the output of a Poisson/Dixon-Coles statistical model plus recent form data. Write a sharp, specific analysis in 3 short paragraphs: (1) what the model sees and why, (2) the key form/tactical angle including the strongest market, (3) one clear risk that could break the prediction. Reference the actual numbers. No headings, no bullet points, under 190 words.";
+
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Lovable-API-Key": key },
+      headers: {
+        "Content-Type": "application/json",
+        "Lovable-API-Key": key,
+        "X-Lovable-AIG-SDK": "fetch",
+      },
       body: JSON.stringify({
         model: "openai/gpt-5.6-sol",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a football analyst. You receive the output of a Poisson/Dixon-Coles statistical model plus recent form data. Write a sharp, specific analysis in 3 short paragraphs: (1) what the model sees and why, (2) the key tactical/form angle including the strongest value market, (3) one clear risk that could break the prediction. Reference the actual numbers. No betting advice disclaimers, no headings, no bullet points, under 190 words.",
-          },
-          { role: "user", content: data.payload },
-        ],
+        instructions: system,
+        input: data.payload,
+        stream: true,
+        store: false,
+        reasoning: { effort: "low", summary: "auto" },
       }),
     });
 
@@ -113,9 +117,41 @@ export const getAiInsight = createServerFn({ method: "POST" })
     if (res.status === 402) return { insight: null, error: "AI credits exhausted for this workspace." };
     if (!res.ok) return { insight: null, error: "AI insight failed to generate." };
 
-    const json = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const insight = json.choices?.[0]?.message?.content?.trim() ?? null;
+    const body = res.body;
+    if (!body) return { insight: null, error: "AI returned an empty response." };
+
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let text = "";
+
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const raw = line.slice(5).trim();
+        if (!raw || raw === "[DONE]") continue;
+        try {
+          const event = JSON.parse(raw) as {
+            type?: string;
+            delta?: string;
+            response?: { output_text?: string };
+          };
+          if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+            text += event.delta;
+          } else if (event.type === "response.completed" && event.response?.output_text) {
+            if (!text) text = event.response.output_text;
+          }
+        } catch {
+          // ignore keep-alive / partial frames
+        }
+      }
+    }
+
+    const insight = text.trim() || null;
     return { insight, error: insight ? null : "AI returned an empty response." };
   });

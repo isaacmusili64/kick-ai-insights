@@ -114,11 +114,18 @@ export type TeamHistory = {
 };
 
 export async function fetchTeamHistory(teamId: number): Promise<TeamHistory> {
+  // The free tier ignores `status=FINISHED` on this endpoint, so pull a date
+  // window instead and keep the played matches.
+  const from = isoDate(new Date(Date.now() - 260 * 86_400_000));
+  const to = isoDate(new Date());
   const data = await api<{ matches: ApiMatch[] }>(
-    `/teams/${teamId}/matches?status=FINISHED&limit=14`,
+    `/teams/${teamId}/matches?dateFrom=${from}&dateTo=${to}`,
     600_000,
   );
-  const ordered = [...data.matches].sort((a, b) => b.utcDate.localeCompare(a.utcDate));
+  const ordered = [...data.matches]
+    .filter((m) => m.status === "FINISHED")
+    .sort((a, b) => b.utcDate.localeCompare(a.utcDate))
+    .slice(0, 14);
 
   let leagueGoalSum = 0;
   let leagueGoalGames = 0;
