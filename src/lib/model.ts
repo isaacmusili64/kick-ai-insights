@@ -55,14 +55,15 @@ export function buildTeamModel(matches: TeamMatch[], leagueAvgGoals: number): Te
   let awayW = 0;
 
   sample.forEach((m, i) => {
-    scored += m.goalsFor * w[i];
-    conceded += m.goalsAgainst * w[i];
+    const wi = w[i] ?? 0;
+    scored += m.goalsFor * wi;
+    conceded += m.goalsAgainst * wi;
     if (m.isHome) {
-      homeScored += m.goalsFor * w[i];
-      homeW += w[i];
+      homeScored += m.goalsFor * wi;
+      homeW += wi;
     } else {
-      awayScored += m.goalsFor * w[i];
-      awayW += w[i];
+      awayScored += m.goalsFor * wi;
+      awayW += wi;
     }
   });
 
@@ -119,24 +120,24 @@ export function predict(
   const lambdaHome = Math.min(4.5, Math.max(0.2, base * home.attack * away.defence * homeAdvantage));
   const lambdaAway = Math.min(4.5, Math.max(0.2, base * away.attack * home.defence * (2 - homeAdvantage)));
 
-  const grid: number[][] = [];
-  for (let h = 0; h <= MAX_GOALS; h += 1) {
-    grid[h] = [];
-    for (let a = 0; a <= MAX_GOALS; a += 1) {
-      grid[h][a] = poisson(h, lambdaHome) * poisson(a, lambdaAway);
+  const size = MAX_GOALS + 1;
+  const grid = new Float64Array(size * size);
+  const at = (h: number, a: number) => h * size + a;
+  for (let h = 0; h < size; h += 1) {
+    for (let a = 0; a < size; a += 1) {
+      grid[at(h, a)] = poisson(h, lambdaHome) * poisson(a, lambdaAway);
     }
   }
 
   // Dixon-Coles low-score dependency correction.
   const rho = -0.06;
-  grid[0][0] *= 1 - lambdaHome * lambdaAway * rho;
-  grid[0][1] *= 1 + lambdaHome * rho;
-  grid[1][0] *= 1 + lambdaAway * rho;
-  grid[1][1] *= 1 - rho;
+  grid[at(0, 0)] *= 1 - lambdaHome * lambdaAway * rho;
+  grid[at(0, 1)] *= 1 + lambdaHome * rho;
+  grid[at(1, 0)] *= 1 + lambdaAway * rho;
+  grid[at(1, 1)] *= 1 - rho;
 
   let total = 0;
-  for (let h = 0; h <= MAX_GOALS; h += 1)
-    for (let a = 0; a <= MAX_GOALS; a += 1) total += grid[h][a];
+  for (let i = 0; i < grid.length; i += 1) total += grid[i] ?? 0;
 
   let homeWin = 0;
   let draw = 0;
@@ -147,9 +148,9 @@ export function predict(
   let cleanSheetAway = 0;
   const scores: { score: string; probability: number }[] = [];
 
-  for (let h = 0; h <= MAX_GOALS; h += 1) {
-    for (let a = 0; a <= MAX_GOALS; a += 1) {
-      const p = grid[h][a] / total;
+  for (let h = 0; h < size; h += 1) {
+    for (let a = 0; a < size; a += 1) {
+      const p = (grid[at(h, a)] ?? 0) / total;
       if (h > a) homeWin += p;
       else if (h === a) draw += p;
       else awayWin += p;
