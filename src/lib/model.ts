@@ -131,10 +131,13 @@ export function predict(
 
   // Dixon-Coles low-score dependency correction.
   const rho = -0.06;
-  grid[at(0, 0)] *= 1 - lambdaHome * lambdaAway * rho;
-  grid[at(0, 1)] *= 1 + lambdaHome * rho;
-  grid[at(1, 0)] *= 1 + lambdaAway * rho;
-  grid[at(1, 1)] *= 1 - rho;
+  const scale = (h: number, a: number, factor: number) => {
+    grid[at(h, a)] = (grid[at(h, a)] ?? 0) * factor;
+  };
+  scale(0, 0, 1 - lambdaHome * lambdaAway * rho);
+  scale(0, 1, 1 + lambdaHome * rho);
+  scale(1, 0, 1 + lambdaAway * rho);
+  scale(1, 1, 1 - rho);
 
   let total = 0;
   for (let i = 0; i < grid.length; i += 1) total += grid[i] ?? 0;
