@@ -1,4 +1,5 @@
 import { bestPick, confidenceTier, type ConfidenceTier, type MarketId } from "./markets";
+import { bestEdge, EDGE_THRESHOLD } from "./edge";
 import { dayKeyOf } from "./format";
 import type { FeedFixture } from "./types";
 
@@ -56,15 +57,23 @@ export function applyFilters(fixtures: FeedFixture[], filters: FilterState): Fee
       if (filters.confidence !== "any" && confidenceTier(f.prediction.confidence) !== filters.confidence)
         return false;
     }
+    if (filters.edgeOnly) {
+      if (!f.prediction) return false;
+      if (bestEdge(f.prediction, f.home.name, f.away.name).edge < EDGE_THRESHOLD) return false;
+    }
     return true;
   });
 
   const prob = (f: FeedFixture) => fixtureProbability(f, filters.market) ?? -1;
+  const edge = (f: FeedFixture) =>
+    f.prediction ? bestEdge(f.prediction, f.home.name, f.away.name).edge : -1;
 
   switch (filters.sort) {
     case "prob-desc":
-    case "edge":
       out.sort((a, b) => prob(b) - prob(a));
+      break;
+    case "edge":
+      out.sort((a, b) => edge(b) - edge(a));
       break;
     case "prob-asc":
       out.sort((a, b) => prob(a) - prob(b));
