@@ -1,22 +1,58 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const FixturesInput = z.object({ code: z.string().min(2).max(5) });
+const FeedInput = z.object({
+  codes: z.array(z.string().min(2).max(5)).min(1).max(5),
+  days: z.number().int().min(1).max(30).optional(),
+});
 const MatchInput = z.object({ matchId: z.number().int().positive() });
+const CompetitionInput = z.object({ code: z.string().min(2).max(5) });
 
 export const getCompetitions = createServerFn({ method: "GET" }).handler(async () => {
-  const { COMPETITIONS } = await import("./football.server");
-  return COMPETITIONS.map((c) => ({ ...c }));
+  const { COMPETITIONS, FREE_COMPETITIONS } = await import("./football.server");
+  const free = new Set<string>(FREE_COMPETITIONS);
+  return COMPETITIONS.map((c) => ({ ...c, free: free.has(c.code) }));
 });
 
-export const getFixtures = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) => FixturesInput.parse(input))
+export const getFeed = createServerFn({ method: "GET" })
+  .inputValidator((input: unknown) => FeedInput.parse(input))
   .handler(async ({ data }) => {
-    const { fetchUpcoming } = await import("./football.server");
+    const { fetchFeed } = await import("./football.server");
     try {
-      return { fixtures: await fetchUpcoming(data.code), error: null as string | null };
+      const feed = await fetchFeed(data.codes, data.days ?? 21);
+      return { ...feed, error: null as string | null };
     } catch (error) {
-      return { fixtures: [], error: (error as Error).message };
+      return { fixtures: [], competitions: [], error: (error as Error).message };
+    }
+  });
+
+export const getStandings = createServerFn({ method: "GET" })
+  .inputValidator((input: unknown) => CompetitionInput.parse(input))
+  .handler(async ({ data }) => {
+    const { fetchLeagueStrength } = await import("./football.server");
+    try {
+      const strength = await fetchLeagueStrength(data.code);
+      return { ...strength, error: null as string | null };
+    } catch (error) {
+      return { rows: [], leagueAvgGoals: 0, error: (error as Error).message };
+    }
+  });
+
+export const getAnalysis = createServerFn({ method: "GET" })
+  .inputValidator((input: unknown) => MatchInput.parse(input))
+  .handler(async ({ data }) => {
+    const { fetchAnalysis } = await import("./football.server");
+    try {
+      return { ...(await fetchAnalysis(data.matchId)), error: null as string | null };
+    } catch (error) {
+      return {
+        fixture: null,
+        prediction: null,
+        table: null,
+        h2h: [],
+        history: { home: [], away: [] },
+        error: (error as Error).message,
+      };
     }
   });
 
