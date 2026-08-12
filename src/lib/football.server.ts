@@ -1,5 +1,8 @@
 /** football-data.org API access + response shaping. Server only. */
 
+import { predict, type ExtendedPrediction } from "./model";
+import { leagueAverage, teamModelFromStanding, type LeagueStrength, type StandingRow } from "./strength";
+
 const BASE = "https://api.football-data.org/v4";
 
 type CacheEntry = { at: number; value: unknown };
