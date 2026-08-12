@@ -110,6 +110,26 @@ export type Prediction = {
   confidence: number;
 };
 
+export type ExtendedPrediction = Prediction & {
+  over15: number;
+  under15: number;
+  over35: number;
+  under35: number;
+  doubleChanceHomeAway: number;
+  dnbHome: number;
+  dnbAway: number;
+  ahHomeMinus1: number;
+  ahAwayPlus1: number;
+  ahAwayMinus1: number;
+  ahHomePlus1: number;
+  homeOver05: number;
+  homeOver15: number;
+  awayOver05: number;
+  awayOver15: number;
+  /** Normalised score probabilities, rows = home goals 0..5, cols = away goals 0..5. */
+  scoreMatrix: number[][];
+};
+
 export function predict(
   home: TeamModel,
   away: TeamModel,
