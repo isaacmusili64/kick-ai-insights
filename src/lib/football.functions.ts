@@ -126,68 +126,44 @@ const InsightInput = z.object({
 export const getAiInsight = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InsightInput.parse(input))
   .handler(async ({ data }) => {
-    const key = process.env["LOVABLE_API_KEY"];
+    const key = process.env["GROQ_API_KEY"];
     if (!key) return { insight: null, error: "AI is not configured." };
 
     const system =
       "You are a football analyst. You receive the output of a Poisson/Dixon-Coles statistical model plus recent form data. Write a sharp, specific analysis in 3 short paragraphs: (1) what the model sees and why, (2) the key form/tactical angle including the strongest market, (3) one clear risk that could break the prediction. Reference the actual numbers. No headings, no bullet points, under 190 words.";
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Lovable-API-Key": key,
-        "X-Lovable-AIG-SDK": "fetch",
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-5.6-sol",
-        instructions: system,
-        input: data.payload,
-        stream: true,
-        store: false,
-        reasoning: { effort: "low", summary: "auto" },
-      }),
-    });
-
-    if (res.status === 429) return { insight: null, error: "AI is busy right now — try again shortly." };
-    if (res.status === 402) return { insight: null, error: "AI credits exhausted for this workspace." };
-    if (!res.ok) return { insight: null, error: "AI insight failed to generate." };
-
-    const body = res.body;
-    if (!body) return { insight: null, error: "AI returned an empty response." };
-
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let text = "";
-
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      buffer += decoder.decode(chunk.value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line.startsWith("data:")) continue;
-        const raw = line.slice(5).trim();
-        if (!raw || raw === "[DONE]") continue;
-        try {
-          const event = JSON.parse(raw) as {
-            type?: string;
-            delta?: string;
-            response?: { output_text?: string };
-          };
-          if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
-            text += event.delta;
-          } else if (event.type === "response.completed" && event.response?.output_text) {
-            if (!text) text = event.response.output_text;
-          }
-        } catch {
-          // ignore keep-alive / partial frames
-        }
-      }
+    let res: Response;
+    try {
+      res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: data.payload },
+          ],
+          temperature: 0.4,
+          max_tokens: 400,
+          stream: false,
+        }),
+      });
+    } catch {
+      return { insight: null, error: "Could not reach the AI service." };
     }
 
+    if (res.status === 429) return { insight: null, error: "AI is busy right now — try again shortly." };
+    if (res.status === 401) return { insight: null, error: "AI is misconfigured — check the API key." };
+    if (!res.ok) return { insight: null, error: "AI insight failed to generate." };
+
+    const json = (await res.json()) as {
+      choices?: { message?: { content?: string } }[];
+    };
+
+    const text = json.choices?.[0]?.message?.content ?? "";
     const insight = text.trim() || null;
     return { insight, error: insight ? null : "AI returned an empty response." };
   });
