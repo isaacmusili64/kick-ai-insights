@@ -110,12 +110,32 @@ export type Prediction = {
   confidence: number;
 };
 
+export type ExtendedPrediction = Prediction & {
+  over15: number;
+  under15: number;
+  over35: number;
+  under35: number;
+  doubleChanceHomeAway: number;
+  dnbHome: number;
+  dnbAway: number;
+  ahHomeMinus1: number;
+  ahAwayPlus1: number;
+  ahAwayMinus1: number;
+  ahHomePlus1: number;
+  homeOver05: number;
+  homeOver15: number;
+  awayOver05: number;
+  awayOver15: number;
+  /** Normalised score probabilities, rows = home goals 0..5, cols = away goals 0..5. */
+  scoreMatrix: number[][];
+};
+
 export function predict(
   home: TeamModel,
   away: TeamModel,
   leagueAvgGoals: number,
   homeAdvantage = 1.14,
-): Prediction {
+): ExtendedPrediction {
   const base = leagueAvgGoals || 1.35;
   const lambdaHome = Math.min(4.5, Math.max(0.2, base * home.attack * away.defence * homeAdvantage));
   const lambdaAway = Math.min(4.5, Math.max(0.2, base * away.attack * home.defence * (2 - homeAdvantage)));
@@ -150,6 +170,15 @@ export function predict(
   let cleanSheetHome = 0;
   let cleanSheetAway = 0;
   const scores: { score: string; probability: number }[] = [];
+  let over15 = 0;
+  let over35 = 0;
+  let ahHomeMinus1 = 0;
+  let ahAwayMinus1 = 0;
+  let homeOver05 = 0;
+  let homeOver15 = 0;
+  let awayOver05 = 0;
+  let awayOver15 = 0;
+  const scoreMatrix: number[][] = Array.from({ length: 6 }, () => Array.from({ length: 6 }, () => 0));
 
   for (let h = 0; h < size; h += 1) {
     for (let a = 0; a < size; a += 1) {
@@ -158,9 +187,18 @@ export function predict(
       else if (h === a) draw += p;
       else awayWin += p;
       if (h + a > 2.5) over25 += p;
+      if (h + a > 1.5) over15 += p;
+      if (h + a > 3.5) over35 += p;
       if (h > 0 && a > 0) bttsYes += p;
       if (a === 0) cleanSheetHome += p;
       if (h === 0) cleanSheetAway += p;
+      if (h - a >= 2) ahHomeMinus1 += p;
+      if (a - h >= 2) ahAwayMinus1 += p;
+      if (h > 0) homeOver05 += p;
+      if (h > 1) homeOver15 += p;
+      if (a > 0) awayOver05 += p;
+      if (a > 1) awayOver15 += p;
+      if (h < 6 && a < 6) scoreMatrix[h]![a] = p;
       scores.push({ score: `${h}-${a}`, probability: p });
     }
   }
@@ -185,5 +223,21 @@ export function predict(
     cleanSheetHome,
     cleanSheetAway,
     confidence: Math.round(Math.min(95, spread * 100 * 1.25 * sampleQuality + 20)),
+    over15,
+    under15: 1 - over15,
+    over35,
+    under35: 1 - over35,
+    doubleChanceHomeAway: homeWin + awayWin,
+    dnbHome: homeWin / (homeWin + awayWin || 1),
+    dnbAway: awayWin / (homeWin + awayWin || 1),
+    ahHomeMinus1,
+    ahAwayPlus1: 1 - ahHomeMinus1,
+    ahAwayMinus1,
+    ahHomePlus1: 1 - ahAwayMinus1,
+    homeOver05,
+    homeOver15,
+    awayOver05,
+    awayOver15,
+    scoreMatrix,
   };
 }

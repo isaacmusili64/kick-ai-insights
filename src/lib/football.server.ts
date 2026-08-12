@@ -1,9 +1,30 @@
 /** football-data.org API access + response shaping. Server only. */
 
+import { predict, type ExtendedPrediction } from "./model";
+import { leagueAverage, teamModelFromStanding, type LeagueStrength, type StandingRow } from "./strength";
+import type { Fixture, FeedFixture, CompetitionStatus } from "./types";
+
+export type { Fixture, FeedFixture, CompetitionStatus } from "./types";
+
 const BASE = "https://api.football-data.org/v4";
 
 type CacheEntry = { at: number; value: unknown };
 const cache = new Map<string, CacheEntry>();
+
+/** Rolling-window limiter: the free data tier allows 10 requests / minute. */
+const calls: number[] = [];
+async function throttle() {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const now = Date.now();
+    while (calls.length && now - calls[0]! > 60_000) calls.shift();
+    if (calls.length < 9) {
+      calls.push(now);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error("RATE_LIMITED");
+}
 
 async function api<T>(path: string, ttlMs = 60_000): Promise<T> {
   const token = process.env["FOOTBALL_DATA_API_KEY"];
@@ -12,8 +33,10 @@ async function api<T>(path: string, ttlMs = 60_000): Promise<T> {
   const hit = cache.get(path);
   if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
 
+  await throttle();
   const res = await fetch(`${BASE}${path}`, { headers: { "X-Auth-Token": token } });
   if (res.status === 429) throw new Error("RATE_LIMITED");
+  if (res.status === 403) throw new Error("RESTRICTED");
   if (!res.ok) throw new Error(`API_ERROR_${res.status}`);
   const json = (await res.json()) as T;
   cache.set(path, { at: Date.now(), value: json });
@@ -31,9 +54,13 @@ export const COMPETITIONS = [
   { code: "PPL", name: "Primeira Liga", country: "Portugal" },
   { code: "BSA", name: "Série A", country: "Brazil" },
   { code: "CL", name: "Champions League", country: "Europe" },
+  { code: "EL", name: "Europa League", country: "Europe" },
   { code: "EC", name: "European Championship", country: "Europe" },
   { code: "WC", name: "World Cup", country: "International" },
 ] as const;
+
+/** Leagues available without PitchModel Pro. */
+export const FREE_COMPETITIONS = ["PL", "ELC", "PD", "SA"] as const;
 
 type ApiTeam = { id: number; name: string; shortName?: string; tla?: string; crest?: string };
 type ApiMatch = {
@@ -47,16 +74,6 @@ type ApiMatch = {
   score?: { fullTime?: { home: number | null; away: number | null } };
 };
 
-export type Fixture = {
-  id: number;
-  utcDate: string;
-  status: string;
-  competition: string;
-  competitionCode: string;
-  home: { id: number; name: string; crest: string | null };
-  away: { id: number; name: string; crest: string | null };
-};
-
 function toFixture(m: ApiMatch): Fixture {
   return {
     id: m.id,
@@ -64,6 +81,7 @@ function toFixture(m: ApiMatch): Fixture {
     status: m.status,
     competition: m.competition?.name ?? "",
     competitionCode: m.competition?.code ?? "",
+    matchday: m.matchday ?? null,
     home: {
       id: m.homeTeam.id,
       name: m.homeTeam.shortName ?? m.homeTeam.name,
@@ -170,4 +188,149 @@ export async function fetchHeadToHead(matchId: number) {
       },
     ];
   });
+}
+/* ------------------------------------------------------------------ *
+ * League strength tables + model-priced fixture feed
+ * ------------------------------------------------------------------ */
+
+type ApiStandings = {
+  standings: {
+    type: string;
+    group: string | null;
+    table: {
+      position: number;
+      team: ApiTeam;
+      playedGames: number;
+      won: number;
+      draw: number;
+      lost: number;
+      points: number;
+      goalsFor: number;
+      goalsAgainst: number;
+    }[];
+  }[];
+};
+
+export async function fetchLeagueStrength(code: string): Promise<LeagueStrength> {
+  const data = await api<ApiStandings>(`/competitions/${code}/standings`, 1_800_000);
+  const rows: StandingRow[] = data.standings
+    .filter((s) => s.type === "TOTAL")
+    .flatMap((s) => s.table)
+    .map((r) => ({
+      position: r.position,
+      team: {
+        id: r.team.id,
+        name: r.team.shortName ?? r.team.name,
+        crest: r.team.crest ?? null,
+        tla: r.team.tla ?? null,
+      },
+      playedGames: r.playedGames,
+      won: r.won,
+      draw: r.draw,
+      lost: r.lost,
+      points: r.points,
+      goalsFor: r.goalsFor,
+      goalsAgainst: r.goalsAgainst,
+    }));
+  return { rows, leagueAvgGoals: leagueAverage(rows) };
+}
+
+export type Feed = {
+  fixtures: FeedFixture[];
+  competitions: CompetitionStatus[];
+};
+
+function priceFixtures(fixtures: Fixture[], strength: LeagueStrength | null): FeedFixture[] {
+  if (!strength || strength.rows.length === 0) return fixtures.map((f) => ({ ...f, prediction: null }));
+  const byId = new Map(strength.rows.map((r) => [r.team.id, r]));
+  return fixtures.map((f) => {
+    const home = byId.get(f.home.id);
+    const away = byId.get(f.away.id);
+    if (!home || !away) return { ...f, prediction: null };
+    return {
+      ...f,
+      prediction: predict(
+        teamModelFromStanding(home, strength.leagueAvgGoals),
+        teamModelFromStanding(away, strength.leagueAvgGoals),
+        strength.leagueAvgGoals,
+      ),
+    };
+  });
+}
+
+export async function fetchCompetitionFeed(code: string, days = 21) {
+  const from = isoDate(new Date());
+  const to = isoDate(new Date(Date.now() + days * 86_400_000));
+  const matches = await api<{ matches: ApiMatch[] }>(
+    `/competitions/${code}/matches?dateFrom=${from}&dateTo=${to}`,
+    600_000,
+  );
+  const fixtures = matches.matches
+    .filter((m) => m.status === "SCHEDULED" || m.status === "TIMED")
+    .sort((a, b) => a.utcDate.localeCompare(b.utcDate))
+    .slice(0, 60)
+    .map(toFixture);
+
+  let strength: LeagueStrength | null = null;
+  try {
+    strength = await fetchLeagueStrength(code);
+  } catch {
+    strength = null;
+  }
+  return { fixtures: priceFixtures(fixtures, strength), modelled: Boolean(strength) };
+}
+
+export async function fetchFeed(codes: string[], days = 21): Promise<Feed> {
+  const wanted = codes.slice(0, 5);
+  const fixtures: FeedFixture[] = [];
+  const competitions: CompetitionStatus[] = [];
+
+  for (const code of wanted) {
+    const name = COMPETITIONS.find((c) => c.code === code)?.name ?? code;
+    try {
+      const result = await fetchCompetitionFeed(code, days);
+      fixtures.push(...result.fixtures);
+      competitions.push({ code, name, error: null, modelled: result.modelled });
+    } catch (error) {
+      competitions.push({ code, name, error: (error as Error).message, modelled: false });
+    }
+  }
+
+  fixtures.sort((a, b) => a.utcDate.localeCompare(b.utcDate));
+  return { fixtures, competitions };
+}
+
+export async function fetchAnalysis(matchId: number) {
+  const fixture = await fetchMatch(matchId);
+  let strength: LeagueStrength | null = null;
+  try {
+    strength = fixture.competitionCode ? await fetchLeagueStrength(fixture.competitionCode) : null;
+  } catch {
+    strength = null;
+  }
+  const [priced] = priceFixtures([fixture], strength);
+  const table = strength
+    ? {
+        home: strength.rows.find((r) => r.team.id === fixture.home.id) ?? null,
+        away: strength.rows.find((r) => r.team.id === fixture.away.id) ?? null,
+        leagueAvgGoals: strength.leagueAvgGoals,
+      }
+    : null;
+
+  const [homeHistory, awayHistory, h2h] = await Promise.all([
+    fetchTeamHistory(fixture.home.id).catch(() => null),
+    fetchTeamHistory(fixture.away.id).catch(() => null),
+    fetchHeadToHead(matchId).catch(() => []),
+  ]);
+
+  return {
+    fixture,
+    prediction: priced?.prediction ?? null,
+    table,
+    h2h,
+    history: {
+      home: homeHistory?.matches.slice(0, 12) ?? [],
+      away: awayHistory?.matches.slice(0, 12) ?? [],
+    },
+  };
 }
