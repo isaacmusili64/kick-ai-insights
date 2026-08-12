@@ -53,6 +53,7 @@ export type Fixture = {
   status: string;
   competition: string;
   competitionCode: string;
+  matchday: number | null;
   home: { id: number; name: string; crest: string | null };
   away: { id: number; name: string; crest: string | null };
 };
@@ -64,6 +65,7 @@ function toFixture(m: ApiMatch): Fixture {
     status: m.status,
     competition: m.competition?.name ?? "",
     competitionCode: m.competition?.code ?? "",
+    matchday: m.matchday ?? null,
     home: {
       id: m.homeTeam.id,
       name: m.homeTeam.shortName ?? m.homeTeam.name,
