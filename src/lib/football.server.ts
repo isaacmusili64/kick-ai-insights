@@ -2,6 +2,9 @@
 
 import { predict, type ExtendedPrediction } from "./model";
 import { leagueAverage, teamModelFromStanding, type LeagueStrength, type StandingRow } from "./strength";
+import type { Fixture, FeedFixture, CompetitionStatus } from "./types";
+
+export type { Fixture, FeedFixture, CompetitionStatus } from "./types";
 
 const BASE = "https://api.football-data.org/v4";
 
@@ -69,17 +72,6 @@ type ApiMatch = {
   homeTeam: ApiTeam;
   awayTeam: ApiTeam;
   score?: { fullTime?: { home: number | null; away: number | null } };
-};
-
-export type Fixture = {
-  id: number;
-  utcDate: string;
-  status: string;
-  competition: string;
-  competitionCode: string;
-  matchday: number | null;
-  home: { id: number; name: string; crest: string | null };
-  away: { id: number; name: string; crest: string | null };
 };
 
 function toFixture(m: ApiMatch): Fixture {
@@ -242,15 +234,6 @@ export async function fetchLeagueStrength(code: string): Promise<LeagueStrength>
     }));
   return { rows, leagueAvgGoals: leagueAverage(rows) };
 }
-
-export type FeedFixture = Fixture & { prediction: ExtendedPrediction | null };
-
-export type CompetitionStatus = {
-  code: string;
-  name: string;
-  error: string | null;
-  modelled: boolean;
-};
 
 export type Feed = {
   fixtures: FeedFixture[];
