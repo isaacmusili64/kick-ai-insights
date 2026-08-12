@@ -5,6 +5,21 @@ const BASE = "https://api.football-data.org/v4";
 type CacheEntry = { at: number; value: unknown };
 const cache = new Map<string, CacheEntry>();
 
+/** Rolling-window limiter: the free data tier allows 10 requests / minute. */
+const calls: number[] = [];
+async function throttle() {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const now = Date.now();
+    while (calls.length && now - calls[0]! > 60_000) calls.shift();
+    if (calls.length < 9) {
+      calls.push(now);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error("RATE_LIMITED");
+}
+
 async function api<T>(path: string, ttlMs = 60_000): Promise<T> {
   const token = process.env["FOOTBALL_DATA_API_KEY"];
   if (!token) throw new Error("MISSING_KEY");
@@ -12,8 +27,10 @@ async function api<T>(path: string, ttlMs = 60_000): Promise<T> {
   const hit = cache.get(path);
   if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
 
+  await throttle();
   const res = await fetch(`${BASE}${path}`, { headers: { "X-Auth-Token": token } });
   if (res.status === 429) throw new Error("RATE_LIMITED");
+  if (res.status === 403) throw new Error("RESTRICTED");
   if (!res.ok) throw new Error(`API_ERROR_${res.status}`);
   const json = (await res.json()) as T;
   cache.set(path, { at: Date.now(), value: json });
@@ -31,9 +48,13 @@ export const COMPETITIONS = [
   { code: "PPL", name: "Primeira Liga", country: "Portugal" },
   { code: "BSA", name: "Série A", country: "Brazil" },
   { code: "CL", name: "Champions League", country: "Europe" },
+  { code: "EL", name: "Europa League", country: "Europe" },
   { code: "EC", name: "European Championship", country: "Europe" },
   { code: "WC", name: "World Cup", country: "International" },
 ] as const;
+
+/** Leagues available without PitchModel Pro. */
+export const FREE_COMPETITIONS = ["PL", "ELC", "PD", "SA"] as const;
 
 type ApiTeam = { id: number; name: string; shortName?: string; tla?: string; crest?: string };
 type ApiMatch = {
