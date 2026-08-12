@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccaRouteImport } from './routes/acca'
 import { Route as MatchMatchIdRouteImport } from './routes/match.$matchId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccaRoute = AccaRouteImport.update({
+  id: '/acca',
+  path: '/acca',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MatchMatchIdRoute = MatchMatchIdRouteImport.update({
@@ -25,27 +31,31 @@ const MatchMatchIdRoute = MatchMatchIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/acca': typeof AccaRoute
   '/match/$matchId': typeof MatchMatchIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/acca': typeof AccaRoute
   '/match/$matchId': typeof MatchMatchIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/acca': typeof AccaRoute
   '/match/$matchId': typeof MatchMatchIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/match/$matchId'
+  fullPaths: '/' | '/acca' | '/match/$matchId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/match/$matchId'
-  id: '__root__' | '/' | '/match/$matchId'
+  to: '/' | '/acca' | '/match/$matchId'
+  id: '__root__' | '/' | '/acca' | '/match/$matchId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccaRoute: typeof AccaRoute
   MatchMatchIdRoute: typeof MatchMatchIdRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/acca': {
+      id: '/acca'
+      path: '/acca'
+      fullPath: '/acca'
+      preLoaderRoute: typeof AccaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/match/$matchId': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccaRoute: AccaRoute,
   MatchMatchIdRoute: MatchMatchIdRoute,
 }
 export const routeTree = rootRouteImport
