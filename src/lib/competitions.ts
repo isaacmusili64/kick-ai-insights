@@ -16,7 +16,9 @@ export const COMPETITION_LIST = [
 
 export const FREE_CODES = COMPETITION_LIST.filter((c) => c.free).map((c) => c.code);
 
-export const MAX_FEED_CODES = 5;
+export const ALL_CODES = COMPETITION_LIST.map((c) => c.code);
+
+export const MAX_FEED_CODES = ALL_CODES.length;
 
 export function competitionName(code: string): string {
   return COMPETITION_LIST.find((c) => c.code === code)?.name ?? code;

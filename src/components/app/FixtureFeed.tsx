@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
-import { COMPETITION_LIST, FREE_CODES, MAX_FEED_CODES, competitionName } from "@/lib/competitions";
+import { ALL_CODES, COMPETITION_LIST, FREE_CODES, MAX_FEED_CODES, competitionName } from "@/lib/competitions";
 import { applyFilters, DEFAULT_FILTERS, SORTS, type FilterState } from "@/lib/filters";
 import { dayLabel, dayLabelShort, groupByDay } from "@/lib/format";
 import { getFeed } from "@/lib/football.functions";
@@ -50,17 +50,24 @@ export function FixtureFeed({ limit }: { limit?: number }) {
     return limit ? g.slice(0, 2) : g;
   }, [filtered, limit]);
 
+  const competitionValue =
+    filters.codes.length > 1 ? "all" : filters.codes.length === 1 ? filters.codes[0]! : "free";
+
   const controls = (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       <Field label="Competition">
         <select
           className={selectClass}
-          value={filters.codes[0] ?? "free"}
-          onChange={(e) =>
-            set({ codes: e.target.value === "free" ? [] : [e.target.value] })
-          }
+          value={competitionValue}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === "free") set({ codes: [] });
+            else if (value === "all") set({ codes: isPro ? [...ALL_CODES] : [...FREE_CODES] });
+            else set({ codes: [value] });
+          }}
         >
           <option value="free">Free leagues (4)</option>
+          <option value="all">All competitions{isPro ? "" : " · Pro"}</option>
           {COMPETITION_LIST.map((c) => (
             <option key={c.code} value={c.code} disabled={!c.free && !isPro}>
               {c.name}

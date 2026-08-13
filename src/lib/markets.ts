@@ -1,6 +1,7 @@
 import type { ExtendedPrediction } from "./model";
 
 export type MarketId =
+  | "all"
   | "1x2"
   | "dc"
   | "ou15"
@@ -13,6 +14,7 @@ export type MarketId =
   | "tg";
 
 export const MARKETS: { id: MarketId; label: string; short: string; pro: boolean }[] = [
+  { id: "all", label: "All markets", short: "All markets", pro: false },
   { id: "1x2", label: "Match result (1X2)", short: "1X2", pro: false },
   { id: "dc", label: "Double chance", short: "Double chance", pro: false },
   { id: "ou15", label: "Over / Under 1.5", short: "O/U 1.5", pro: true },
@@ -60,6 +62,8 @@ export function picksFor(
   const xg = `Expected goals ${g(p.expectedHomeGoals)} – ${g(p.expectedAwayGoals)}.`;
 
   switch (market) {
+    case "all":
+      return MARKETS.filter((m) => m.id !== "all").flatMap((m) => picksFor(m.id, p, home, away));
     case "1x2":
       return [
         mk(`${home} win`, p.homeWin, `Home attack vs away defence, plus home advantage. ${xg}`),

@@ -102,7 +102,8 @@ export function activeFilterChips(
       label: competitionName(code),
       reset: { codes: filters.codes.filter((c) => c !== code) },
     });
-  if (filters.market !== "1x2") chips.push({ key: "market", label: filters.market.toUpperCase(), reset: { market: "1x2" } });
+  if (filters.market !== "1x2")
+    chips.push({ key: "market", label: filters.market.toUpperCase(), reset: { market: "1x2" } });
   if (filters.minProb > 0) chips.push({ key: "minProb", label: `${filters.minProb}%+`, reset: { minProb: 0 } });
   if (filters.confidence !== "any")
     chips.push({ key: "confidence", label: `${filters.confidence} confidence`, reset: { confidence: "any" } });

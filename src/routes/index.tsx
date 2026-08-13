@@ -9,7 +9,7 @@ import { FixtureFeed } from "@/components/app/FixtureFeed";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FREE_CODES } from "@/lib/competitions";
 import { bestEdge } from "@/lib/edge";
-import { fixtureDateLine } from "@/lib/format";
+import { dayKeyOf, fixtureDateLine, todayKey } from "@/lib/format";
 import { getFeed } from "@/lib/football.functions";
 import { bestPick, pct } from "@/lib/markets";
 
@@ -43,7 +43,10 @@ function TodaysModelCard() {
     staleTime: 5 * 60_000,
   });
 
-  const priced = (data?.fixtures ?? []).filter((f) => f.prediction);
+  const today = todayKey();
+  const priced = (data?.fixtures ?? []).filter(
+    (f) => f.prediction && dayKeyOf(f.utcDate) === today,
+  );
   const top = [...priced]
     .sort((a, b) => (b.prediction!.confidence ?? 0) - (a.prediction!.confidence ?? 0))
     .slice(0, 3);
@@ -56,16 +59,23 @@ function TodaysModelCard() {
     .slice(0, 3);
 
   if (isPending) return <Skeleton className="h-64 rounded-2xl" />;
-  if (!priced.length) return null;
+  if (!priced.length)
+    return (
+      <p className="card-surface p-5 text-sm text-muted-foreground">
+        No games kick off today. Scroll down for the next match days on the board.
+      </p>
+    );
 
   return (
     <div className="card-surface grid-lines overflow-hidden">
       <div className="grid gap-6 bg-gradient-to-br from-card via-card to-primary/8 p-5 sm:p-6 lg:grid-cols-2">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide">
-            <Sparkles className="h-4 w-4 text-gold" /> Today&apos;s model card
+            <Sparkles className="h-4 w-4 text-gold" /> Today&apos;s best calls
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground">Highest confidence calls on the board</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Our most confident picks from today&apos;s games
+          </p>
           <ul className="mt-4 space-y-2">
             {top.map((f) => {
               const pick = bestPick("1x2", f.prediction!, f.home.name, f.away.name)!;
@@ -92,9 +102,9 @@ function TodaysModelCard() {
           </ul>
         </div>
         <div>
-          <h2 className="text-sm font-bold uppercase tracking-wide">Biggest model edge</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide">Best value today</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Model probability vs the market baseline price
+            Where our numbers disagree most with the typical price
           </p>
           <ul className="mt-4 space-y-2">
             {edges.map((f) => {
@@ -109,7 +119,7 @@ function TodaysModelCard() {
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold">{e.label}</span>
                       <span className="block truncate text-[11px] text-muted-foreground">
-                        Model {pct(e.model)} · market {pct(e.implied)}
+                        Our number {pct(e.model)} · market {pct(e.implied)}
                       </span>
                     </span>
                     <EdgeBadge edge={e.edge} />
@@ -139,20 +149,20 @@ function Index() {
         <div className="absolute inset-0 flex items-end">
           <div className="mx-auto w-full max-w-6xl px-4 pb-8">
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary">
-              Poisson · Dixon-Coles · AI analysis
+              Today&apos;s games · every market · proven track record
             </p>
             <h1 className="mt-2 max-w-3xl text-3xl font-bold leading-[1.05] sm:text-5xl">
               Football predictions from a model, not a hunch.
             </h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground sm:text-base">
-              Every fixture priced across ten markets from live league data, with model edge against
-              the market and an AI read on the game.
+              Win chances, goals, scorelines and best value for every fixture — plus a plain-English
+              read on each game and a public record of how the calls landed.
             </p>
             <Link
               to="/pro"
               className="mt-5 inline-flex items-center gap-1.5 rounded-xl border border-gold/40 bg-gold/12 px-4 py-2 text-sm font-semibold text-gold"
             >
-              See PitchModel Pro <ArrowRight className="h-4 w-4" />
+              See Pro predictions <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </div>
