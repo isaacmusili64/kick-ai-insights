@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { ArrowLeft, Lock, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ConfidenceBadge, EdgeBadge, ProBadge } from "@/components/app/Badges";
 import { Crest } from "@/components/app/Crest";
@@ -14,6 +14,7 @@ import { useAcca } from "@/lib/acca";
 import { edgeRows } from "@/lib/edge";
 import { fixtureDateLine } from "@/lib/format";
 import { getAiInsight, getAnalysis } from "@/lib/football.functions";
+import { useHistory } from "@/lib/history";
 import { MARKETS, pct, picksFor, type MarketId } from "@/lib/markets";
 import { usePro } from "@/lib/pro";
 
@@ -54,6 +55,7 @@ function MatchPage() {
   const id = Number(matchId);
   const { isPro } = usePro();
   const acca = useAcca();
+  const history = useHistory();
   const [market, setMarket] = useState<MarketId>("1x2");
 
   const analysisFn = useServerFn(getAnalysis);
@@ -69,6 +71,26 @@ function MatchPage() {
     mutationFn: (payload: string) => insightFn({ data: { matchId: id, payload } }),
   });
 
+  const fixture = data?.fixture;
+  const p = data?.prediction;
+
+  useEffect(() => {
+    if (!fixture || !p) return;
+    history.log({
+      matchId: fixture.id,
+      home: fixture.home.name,
+      away: fixture.away.name,
+      competition: fixture.competition,
+      utcDate: fixture.utcDate,
+      homeWin: p.homeWin,
+      draw: p.draw,
+      awayWin: p.awayWin,
+      confidence: p.confidence,
+    });
+    // Only log once per fixture load — history.log itself dedupes by matchId.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixture?.id, p]);
+
   if (isPending) {
     return (
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
@@ -77,9 +99,6 @@ function MatchPage() {
       </main>
     );
   }
-
-  const fixture = data?.fixture;
-  const p = data?.prediction;
 
   if (!fixture || !p) {
     return (
