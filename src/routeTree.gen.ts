@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccaRouteImport } from './routes/acca'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ProRouteImport } from './routes/pro'
 import { Route as MatchMatchIdRouteImport } from './routes/match.$matchId'
 import { Route as ApiPublicMpesaCallbackRouteImport } from './routes/api/public/mpesa/callback'
@@ -23,6 +24,11 @@ const IndexRoute = IndexRouteImport.update({
 const AccaRoute = AccaRouteImport.update({
   id: '/acca',
   path: '/acca',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProRoute = ProRouteImport.update({
@@ -44,6 +50,7 @@ const ApiPublicMpesaCallbackRoute = ApiPublicMpesaCallbackRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/acca': typeof AccaRoute
+  '/auth': typeof AuthRoute
   '/pro': typeof ProRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/acca': typeof AccaRoute
+  '/auth': typeof AuthRoute
   '/pro': typeof ProRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
@@ -59,6 +67,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/acca': typeof AccaRoute
+  '/auth': typeof AuthRoute
   '/pro': typeof ProRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
@@ -66,13 +75,25 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/acca' | '/pro' | '/match/$matchId' | '/api/public/mpesa/callback'
+    | '/'
+    | '/acca'
+    | '/auth'
+    | '/pro'
+    | '/match/$matchId'
+    | '/api/public/mpesa/callback'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/acca' | '/pro' | '/match/$matchId' | '/api/public/mpesa/callback'
+  to:
+    | '/'
+    | '/acca'
+    | '/auth'
+    | '/pro'
+    | '/match/$matchId'
+    | '/api/public/mpesa/callback'
   id:
     | '__root__'
     | '/'
     | '/acca'
+    | '/auth'
     | '/pro'
     | '/match/$matchId'
     | '/api/public/mpesa/callback'
@@ -81,6 +102,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccaRoute: typeof AccaRoute
+  AuthRoute: typeof AuthRoute
   ProRoute: typeof ProRoute
   MatchMatchIdRoute: typeof MatchMatchIdRoute
   ApiPublicMpesaCallbackRoute: typeof ApiPublicMpesaCallbackRoute
@@ -100,6 +122,13 @@ declare module '@tanstack/react-router' {
       path: '/acca'
       fullPath: '/acca'
       preLoaderRoute: typeof AccaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pro': {
@@ -129,6 +158,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccaRoute: AccaRoute,
+  AuthRoute: AuthRoute,
   ProRoute: ProRoute,
   MatchMatchIdRoute: MatchMatchIdRoute,
   ApiPublicMpesaCallbackRoute: ApiPublicMpesaCallbackRoute,
