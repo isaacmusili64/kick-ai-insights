@@ -281,12 +281,17 @@ export async function fetchCompetitionFeed(code: string, days = 21) {
 }
 
 export async function fetchFeed(codes: string[], days = 21): Promise<Feed> {
-  const wanted = codes.slice(0, 5);
+  const wanted = codes.slice(0, 13);
   const fixtures: FeedFixture[] = [];
   const competitions: CompetitionStatus[] = [];
+  const deadline = Date.now() + 25_000;
 
   for (const code of wanted) {
     const name = COMPETITIONS.find((c) => c.code === code)?.name ?? code;
+    if (Date.now() > deadline) {
+      competitions.push({ code, name, error: "RATE_LIMITED", modelled: false });
+      continue;
+    }
     try {
       const result = await fetchCompetitionFeed(code, days);
       fixtures.push(...result.fixtures);
@@ -298,6 +303,63 @@ export async function fetchFeed(codes: string[], days = 21): Promise<Feed> {
 
   fixtures.sort((a, b) => a.utcDate.localeCompare(b.utcDate));
   return { fixtures, competitions };
+}
+
+export type GradedMatch = {
+  id: number;
+  date: string;
+  homeId: number;
+  awayId: number;
+  homeName: string;
+  awayName: string;
+  homeGoals: number;
+  awayGoals: number;
+};
+
+/** Matches already played in a competition, with final scores, for scoring the model. */
+export async function gradedMatches(code: string, days = 120): Promise<GradedMatch[]> {
+  const from = isoDate(new Date(Date.now() - days * 86_400_000));
+  const to = isoDate(new Date());
+  const data = await api<{ matches: ApiMatch[] }>(
+    `/competitions/${code}/matches?dateFrom=${from}&dateTo=${to}`,
+    1_800_000,
+  );
+  return data.matches.flatMap((m) => {
+    const ft = m.score?.fullTime;
+    if (m.status !== "FINISHED" || !ft || ft.home === null || ft.away === null) return [];
+    return [
+      {
+        id: m.id,
+        date: m.utcDate,
+        homeId: m.homeTeam.id,
+        awayId: m.awayTeam.id,
+        homeName: m.homeTeam.shortName ?? m.homeTeam.name,
+        awayName: m.awayTeam.shortName ?? m.awayTeam.name,
+        homeGoals: ft.home,
+        awayGoals: ft.away,
+      },
+    ];
+  });
+}
+
+/** Final scores for specific match ids (used when grading logged predictions). */
+export async function fetchResults(ids: number[]) {
+  const out: { id: number; homeGoals: number; awayGoals: number; status: string }[] = [];
+  for (const id of ids.slice(0, 20)) {
+    try {
+      const data = await api<ApiMatch>(`/matches/${id}`, 300_000);
+      const ft = data.score?.fullTime;
+      out.push({
+        id,
+        status: data.status,
+        homeGoals: ft?.home ?? -1,
+        awayGoals: ft?.away ?? -1,
+      });
+    } catch {
+      /* skip */
+    }
+  }
+  return out;
 }
 
 export async function fetchAnalysis(matchId: number) {
