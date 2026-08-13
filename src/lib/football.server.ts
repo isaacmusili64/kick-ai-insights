@@ -1,10 +1,10 @@
 /** football-data.org API access + response shaping. Server only. */
 
-import { predict, type ExtendedPrediction } from "./model";
-import { leagueAverage, teamModelFromStanding, type LeagueStrength, type StandingRow } from "./strength";
-import type { Fixture, FeedFixture, CompetitionStatus } from "./types";
+import { buildTeamModel, predict, type ExtendedPrediction } from "./model";
+import { computeHomeAdvantage, leagueAverage, teamModelFromStanding, type LeagueStrength, type StandingRow } from "./strength";
+import type { Fixture, FeedFixture, CompetitionStatus, MatchResult } from "./types";
 
-export type { Fixture, FeedFixture, CompetitionStatus } from "./types";
+export type { Fixture, FeedFixture, CompetitionStatus, MatchResult } from "./types";
 
 const BASE = "https://api.football-data.org/v4";
 
@@ -118,6 +118,16 @@ export async function fetchMatch(id: number): Promise<Fixture> {
   return toFixture(data);
 }
 
+/** Final/current score for a match — used to grade past predictions in the history view. */
+export async function fetchMatchResult(id: number): Promise<MatchResult> {
+  const data = await api<ApiMatch>(`/matches/${id}`, 300_000);
+  return {
+    status: data.status,
+    homeGoals: data.score?.fullTime?.home ?? null,
+    awayGoals: data.score?.fullTime?.away ?? null,
+  };
+}
+
 export type TeamHistory = {
   matches: {
     goalsFor: number;
@@ -213,26 +223,27 @@ type ApiStandings = {
 
 export async function fetchLeagueStrength(code: string): Promise<LeagueStrength> {
   const data = await api<ApiStandings>(`/competitions/${code}/standings`, 1_800_000);
-  const rows: StandingRow[] = data.standings
-    .filter((s) => s.type === "TOTAL")
-    .flatMap((s) => s.table)
-    .map((r) => ({
-      position: r.position,
-      team: {
-        id: r.team.id,
-        name: r.team.shortName ?? r.team.name,
-        crest: r.team.crest ?? null,
-        tla: r.team.tla ?? null,
-      },
-      playedGames: r.playedGames,
-      won: r.won,
-      draw: r.draw,
-      lost: r.lost,
-      points: r.points,
-      goalsFor: r.goalsFor,
-      goalsAgainst: r.goalsAgainst,
-    }));
-  return { rows, leagueAvgGoals: leagueAverage(rows) };
+  const tableOfType = (type: string) => data.standings.filter((s) => s.type === type).flatMap((s) => s.table);
+  const rows: StandingRow[] = tableOfType("TOTAL").map((r) => ({
+    position: r.position,
+    team: {
+      id: r.team.id,
+      name: r.team.shortName ?? r.team.name,
+      crest: r.team.crest ?? null,
+      tla: r.team.tla ?? null,
+    },
+    playedGames: r.playedGames,
+    won: r.won,
+    draw: r.draw,
+    lost: r.lost,
+    points: r.points,
+    goalsFor: r.goalsFor,
+    goalsAgainst: r.goalsAgainst,
+  }));
+  // Same response already carries HOME/AWAY-split tables for most leagues
+  // (not cup/group competitions) — free signal, no extra request.
+  const homeAdvantage = computeHomeAdvantage(tableOfType("HOME"), tableOfType("AWAY"));
+  return { rows, leagueAvgGoals: leagueAverage(rows), homeAdvantage };
 }
 
 export type Feed = {
@@ -253,6 +264,7 @@ function priceFixtures(fixtures: Fixture[], strength: LeagueStrength | null): Fe
         teamModelFromStanding(home, strength.leagueAvgGoals),
         teamModelFromStanding(away, strength.leagueAvgGoals),
         strength.leagueAvgGoals,
+        strength.homeAdvantage,
       ),
     };
   });
@@ -281,17 +293,12 @@ export async function fetchCompetitionFeed(code: string, days = 21) {
 }
 
 export async function fetchFeed(codes: string[], days = 21): Promise<Feed> {
-  const wanted = codes.slice(0, 13);
+  const wanted = codes.slice(0, 5);
   const fixtures: FeedFixture[] = [];
   const competitions: CompetitionStatus[] = [];
-  const deadline = Date.now() + 25_000;
 
   for (const code of wanted) {
     const name = COMPETITIONS.find((c) => c.code === code)?.name ?? code;
-    if (Date.now() > deadline) {
-      competitions.push({ code, name, error: "RATE_LIMITED", modelled: false });
-      continue;
-    }
     try {
       const result = await fetchCompetitionFeed(code, days);
       fixtures.push(...result.fixtures);
@@ -305,63 +312,6 @@ export async function fetchFeed(codes: string[], days = 21): Promise<Feed> {
   return { fixtures, competitions };
 }
 
-export type GradedMatch = {
-  id: number;
-  date: string;
-  homeId: number;
-  awayId: number;
-  homeName: string;
-  awayName: string;
-  homeGoals: number;
-  awayGoals: number;
-};
-
-/** Matches already played in a competition, with final scores, for scoring the model. */
-export async function gradedMatches(code: string, days = 120): Promise<GradedMatch[]> {
-  const from = isoDate(new Date(Date.now() - days * 86_400_000));
-  const to = isoDate(new Date());
-  const data = await api<{ matches: ApiMatch[] }>(
-    `/competitions/${code}/matches?dateFrom=${from}&dateTo=${to}`,
-    1_800_000,
-  );
-  return data.matches.flatMap((m) => {
-    const ft = m.score?.fullTime;
-    if (m.status !== "FINISHED" || !ft || ft.home === null || ft.away === null) return [];
-    return [
-      {
-        id: m.id,
-        date: m.utcDate,
-        homeId: m.homeTeam.id,
-        awayId: m.awayTeam.id,
-        homeName: m.homeTeam.shortName ?? m.homeTeam.name,
-        awayName: m.awayTeam.shortName ?? m.awayTeam.name,
-        homeGoals: ft.home,
-        awayGoals: ft.away,
-      },
-    ];
-  });
-}
-
-/** Final scores for specific match ids (used when grading logged predictions). */
-export async function fetchResults(ids: number[]) {
-  const out: { id: number; homeGoals: number; awayGoals: number; status: string }[] = [];
-  for (const id of ids.slice(0, 20)) {
-    try {
-      const data = await api<ApiMatch>(`/matches/${id}`, 300_000);
-      const ft = data.score?.fullTime;
-      out.push({
-        id,
-        status: data.status,
-        homeGoals: ft?.home ?? -1,
-        awayGoals: ft?.away ?? -1,
-      });
-    } catch {
-      /* skip */
-    }
-  }
-  return out;
-}
-
 export async function fetchAnalysis(matchId: number) {
   const fixture = await fetchMatch(matchId);
   let strength: LeagueStrength | null = null;
@@ -370,7 +320,34 @@ export async function fetchAnalysis(matchId: number) {
   } catch {
     strength = null;
   }
-  const [priced] = priceFixtures([fixture], strength);
+
+  const [homeHistory, awayHistory, h2h] = await Promise.all([
+    fetchTeamHistory(fixture.home.id).catch(() => null),
+    fetchTeamHistory(fixture.away.id).catch(() => null),
+    fetchHeadToHead(matchId).catch(() => []),
+  ]);
+
+  // Prefer the recency-weighted, real-home/away-split model built from each
+  // team's actual recent results over the season-aggregate standings model —
+  // it's already fetched above for the "recent form" display, so this is a
+  // free upgrade in prediction quality, not an extra request.
+  let prediction: ExtendedPrediction | null = null;
+  if (homeHistory && awayHistory && (homeHistory.matches.length > 0 || awayHistory.matches.length > 0)) {
+    const games = homeHistory.leagueGoalGames + awayHistory.leagueGoalGames;
+    const leagueAvgGoals = games
+      ? (homeHistory.leagueGoalSum + awayHistory.leagueGoalSum) / games / 2
+      : (strength?.leagueAvgGoals ?? 1.35);
+    prediction = predict(
+      buildTeamModel(homeHistory.matches, leagueAvgGoals),
+      buildTeamModel(awayHistory.matches, leagueAvgGoals),
+      leagueAvgGoals,
+      strength?.homeAdvantage,
+    );
+  } else {
+    const [priced] = priceFixtures([fixture], strength);
+    prediction = priced?.prediction ?? null;
+  }
+
   const table = strength
     ? {
         home: strength.rows.find((r) => r.team.id === fixture.home.id) ?? null,
@@ -379,15 +356,9 @@ export async function fetchAnalysis(matchId: number) {
       }
     : null;
 
-  const [homeHistory, awayHistory, h2h] = await Promise.all([
-    fetchTeamHistory(fixture.home.id).catch(() => null),
-    fetchTeamHistory(fixture.away.id).catch(() => null),
-    fetchHeadToHead(matchId).catch(() => []),
-  ]);
-
   return {
     fixture,
-    prediction: priced?.prediction ?? null,
+    prediction,
     table,
     h2h,
     history: {

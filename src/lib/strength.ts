@@ -15,7 +15,38 @@ export type StandingRow = {
 export type LeagueStrength = {
   rows: StandingRow[];
   leagueAvgGoals: number;
+  /**
+   * League-specific home-advantage multiplier for `predict()`, fitted from
+   * this competition's actual home/away scoring split (via the standings
+   * endpoint's HOME/AWAY tables) instead of one constant applied everywhere.
+   * Falls back to the model's own default when a split isn't available
+   * (some cup/group competitions only publish a TOTAL table).
+   */
+  homeAdvantage?: number;
 };
+
+/**
+ * Fits a home-advantage multiplier from a competition's HOME/AWAY standings
+ * split: teams score at `homeRate` goals/game at home and `awayRate` away,
+ * so the model's home/away lambdas (which are `base * homeAdvantage` and
+ * `base * (2 - homeAdvantage)`) should reproduce that split when
+ * `homeAdvantage = 2 * homeRate / (homeRate + awayRate)`.
+ * Clamped to a sane range so a handful of early-season games can't swing it.
+ */
+export function computeHomeAdvantage(
+  homeRows: { goalsFor: number; playedGames: number }[],
+  awayRows: { goalsFor: number; playedGames: number }[],
+): number | undefined {
+  const homeGames = homeRows.reduce((a, r) => a + r.playedGames, 0);
+  const awayGames = awayRows.reduce((a, r) => a + r.playedGames, 0);
+  if (homeGames < 20 || awayGames < 20) return undefined; // too little data to trust yet
+
+  const homeRate = homeRows.reduce((a, r) => a + r.goalsFor, 0) / homeGames;
+  const awayRate = awayRows.reduce((a, r) => a + r.goalsFor, 0) / awayGames;
+  if (!homeRate || !awayRate) return undefined;
+
+  return Math.min(1.45, Math.max(0.9, (2 * homeRate) / (homeRate + awayRate)));
+}
 
 /**
  * Builds the same TeamModel shape the Poisson/Dixon-Coles engine consumes,

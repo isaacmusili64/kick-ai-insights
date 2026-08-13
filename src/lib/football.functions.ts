@@ -56,6 +56,17 @@ export const getAnalysis = createServerFn({ method: "GET" })
     }
   });
 
+export const getMatchResult = createServerFn({ method: "GET" })
+  .inputValidator((input: unknown) => MatchInput.parse(input))
+  .handler(async ({ data }) => {
+    const { fetchMatchResult } = await import("./football.server");
+    try {
+      return { ...(await fetchMatchResult(data.matchId)), error: null as string | null };
+    } catch (error) {
+      return { status: "UNKNOWN", homeGoals: null, awayGoals: null, error: (error as Error).message };
+    }
+  });
+
 export const getPrediction = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => MatchInput.parse(input))
   .handler(async ({ data }) => {

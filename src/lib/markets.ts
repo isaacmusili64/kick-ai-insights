@@ -1,7 +1,6 @@
 import type { ExtendedPrediction } from "./model";
 
 export type MarketId =
-  | "all"
   | "1x2"
   | "dc"
   | "ou15"
@@ -14,7 +13,6 @@ export type MarketId =
   | "tg";
 
 export const MARKETS: { id: MarketId; label: string; short: string; pro: boolean }[] = [
-  { id: "all", label: "All markets", short: "All markets", pro: false },
   { id: "1x2", label: "Match result (1X2)", short: "1X2", pro: false },
   { id: "dc", label: "Double chance", short: "Double chance", pro: false },
   { id: "ou15", label: "Over / Under 1.5", short: "O/U 1.5", pro: true },
@@ -62,8 +60,6 @@ export function picksFor(
   const xg = `Expected goals ${g(p.expectedHomeGoals)} – ${g(p.expectedAwayGoals)}.`;
 
   switch (market) {
-    case "all":
-      return MARKETS.filter((m) => m.id !== "all").flatMap((m) => picksFor(m.id, p, home, away));
     case "1x2":
       return [
         mk(`${home} win`, p.homeWin, `Home attack vs away defence, plus home advantage. ${xg}`),
@@ -132,6 +128,22 @@ export function bestPick(
 ): Pick | null {
   const picks = picksFor(market, p, home, away).sort((a, b) => b.probability - a.probability);
   return picks[0] ?? null;
+}
+
+/** Highest-probability pick across every market the viewer can access — backs the "All markets" filter. */
+export function bestPickAnyMarket(
+  p: ExtendedPrediction,
+  home: string,
+  away: string,
+  allowPro: boolean,
+): Pick | null {
+  let best: Pick | null = null;
+  for (const m of MARKETS) {
+    if (m.pro && !allowPro) continue;
+    const pick = bestPick(m.id, p, home, away);
+    if (pick && (!best || pick.probability > best.probability)) best = pick;
+  }
+  return best;
 }
 
 /** The 2-3 most interesting selections to surface on a fixture card. */
