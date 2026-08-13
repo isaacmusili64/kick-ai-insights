@@ -1,18 +1,21 @@
 import { Link } from "@tanstack/react-router";
-import { Layers, LineChart, Sparkles } from "lucide-react";
+import { History, Layers, LineChart, Sparkles } from "lucide-react";
 
 import { useAcca } from "@/lib/acca";
+import { useAuth } from "@/lib/auth";
 import { usePro } from "@/lib/pro";
 
 const LINKS = [
   { to: "/" as const, label: "Predictions", icon: LineChart },
   { to: "/acca" as const, label: "Smart acca", icon: Layers },
-  { to: "/pro" as const, label: "Pro", icon: Sparkles },
+  { to: "/performance" as const, label: "Track record", icon: History },
+  { to: "/pro" as const, label: "Go Pro", icon: Sparkles },
 ];
 
 export function SiteNav() {
   const { selections } = useAcca();
   const { isPro } = usePro();
+  const { user, signOut } = useAuth();
 
   return (
     <>
@@ -44,11 +47,26 @@ export function SiteNav() {
                 ) : null}
               </Link>
             ))}
+            {user ? (
+              <button
+                onClick={() => void signOut()}
+                className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link
+                to="/auth"
+                className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Sign in
+              </Link>
+            )}
           </nav>
         </div>
       </header>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-3 border-t border-border bg-card/95 backdrop-blur sm:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 border-t border-border bg-card/95 backdrop-blur sm:hidden">
         {LINKS.map((l) => (
           <Link
             key={l.to}
@@ -72,8 +90,8 @@ export function SiteFooter() {
       <div className="mx-auto max-w-6xl space-y-2 text-xs text-muted-foreground">
         <p className="font-semibold text-foreground">PitchModel</p>
         <p>
-          Probabilities come from a Poisson / Dixon-Coles model fitted to live league data from
-          football-data.org. Model output is statistical analysis, not betting advice. 18+.
+          Every probability is worked out from live league data and checked against results on our
+          public track record. Predictions are statistical analysis, not betting advice. 18+.
         </p>
       </div>
     </footer>
