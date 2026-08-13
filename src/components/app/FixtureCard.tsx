@@ -7,16 +7,26 @@ import { ProbabilityBar } from "./ProbabilityBar";
 import { useAcca } from "@/lib/acca";
 import { bestEdge, EDGE_THRESHOLD } from "@/lib/edge";
 import { kickoff } from "@/lib/format";
-import { bestPick, headlinePicks, pct, type MarketId } from "@/lib/markets";
+import { bestPick, bestPickAnyMarket, headlinePicks, pct, type MarketId } from "@/lib/markets";
 import { FREE_ACCA_SELECTIONS, usePro } from "@/lib/pro";
 import type { FeedFixture } from "@/lib/types";
 
-export function FixtureCard({ fixture, market }: { fixture: FeedFixture; market: MarketId }) {
+export function FixtureCard({
+  fixture,
+  market,
+}: {
+  fixture: FeedFixture;
+  market: MarketId | "all";
+}) {
   const p = fixture.prediction;
   const acca = useAcca();
   const { isPro } = usePro();
 
-  const focus = p ? bestPick(market, p, fixture.home.name, fixture.away.name) : null;
+  const focus = p
+    ? market === "all"
+      ? bestPickAnyMarket(p, fixture.home.name, fixture.away.name, isPro)
+      : bestPick(market, p, fixture.home.name, fixture.away.name)
+    : null;
   const chips = p ? headlinePicks(p, fixture.home.name, fixture.away.name) : [];
   const edge = p ? bestEdge(p, fixture.home.name, fixture.away.name) : null;
   const selected = focus ? acca.has(fixture.id, focus.label) : false;

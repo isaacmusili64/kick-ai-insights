@@ -2,20 +2,18 @@ import { Link } from "@tanstack/react-router";
 import { History, Layers, LineChart, Sparkles } from "lucide-react";
 
 import { useAcca } from "@/lib/acca";
-import { useAuth } from "@/lib/auth";
 import { usePro } from "@/lib/pro";
 
 const LINKS = [
   { to: "/" as const, label: "Predictions", icon: LineChart },
   { to: "/acca" as const, label: "Smart acca", icon: Layers },
-  { to: "/performance" as const, label: "Track record", icon: History },
-  { to: "/pro" as const, label: "Go Pro", icon: Sparkles },
+  { to: "/history" as const, label: "History", icon: History },
+  { to: "/pro" as const, label: "Pro", icon: Sparkles },
 ];
 
 export function SiteNav() {
   const { selections } = useAcca();
   const { isPro } = usePro();
-  const { user, signOut } = useAuth();
 
   return (
     <>
@@ -47,22 +45,6 @@ export function SiteNav() {
                 ) : null}
               </Link>
             ))}
-            {user ? (
-              <button
-                onClick={() => void signOut()}
-                className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Sign out
-              </button>
-            ) : (
-              <Link
-                to="/auth"
-                search={{ next: undefined }}
-                className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Sign in
-              </Link>
-            )}
           </nav>
         </div>
       </header>
@@ -91,8 +73,8 @@ export function SiteFooter() {
       <div className="mx-auto max-w-6xl space-y-2 text-xs text-muted-foreground">
         <p className="font-semibold text-foreground">PitchModel</p>
         <p>
-          Every probability is worked out from live league data and checked against results on our
-          public track record. Predictions are statistical analysis, not betting advice. 18+.
+          Probabilities come from a Poisson / Dixon-Coles model fitted to live league data from
+          football-data.org. Model output is statistical analysis, not betting advice. 18+.
         </p>
       </div>
     </footer>
