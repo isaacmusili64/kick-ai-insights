@@ -16,19 +16,10 @@ export const COMPETITION_LIST = [
 
 export const FREE_CODES = COMPETITION_LIST.filter((c) => c.free).map((c) => c.code);
 
-export const MAX_FEED_CODES = 5;
+export const ALL_CODES = COMPETITION_LIST.map((c) => c.code);
+
+export const MAX_FEED_CODES = ALL_CODES.length;
 
 export function competitionName(code: string): string {
   return COMPETITION_LIST.find((c) => c.code === code)?.name ?? code;
-}
-
-/**
- * "All leagues" selection: every competition the viewer can access, capped at
- * MAX_FEED_CODES (the feed only ever prices up to 5 competitions per request,
- * in line with the football-data.org free-tier rate limit).
- */
-export function allFeedCodes(isPro: boolean): string[] {
-  return COMPETITION_LIST.filter((c) => c.free || isPro)
-    .slice(0, MAX_FEED_CODES)
-    .map((c) => c.code);
 }

@@ -28,9 +28,3 @@ export type CompetitionStatus = {
   error: string | null;
   modelled: boolean;
 };
-
-export type MatchResult = {
-  status: string;
-  homeGoals: number | null;
-  awayGoals: number | null;
-};

@@ -1,4 +1,4 @@
-import { bestPick, bestPickAnyMarket, confidenceTier, type ConfidenceTier, type MarketId } from "./markets";
+import { bestPick, confidenceTier, type ConfidenceTier, type MarketId } from "./markets";
 import { bestEdge, EDGE_THRESHOLD } from "./edge";
 import { dayKeyOf } from "./format";
 import type { FeedFixture } from "./types";
@@ -13,14 +13,12 @@ export const SORTS: { id: SortId; label: string; requiresOdds?: boolean }[] = [
   { id: "edge", label: "Highest model edge", requiresOdds: true },
 ];
 
-export type MarketFilterId = MarketId | "all";
-
 export type FilterState = {
   day: string;
   from: string | null;
   to: string | null;
   codes: string[];
-  market: MarketFilterId;
+  market: MarketId;
   minProb: number;
   confidence: "any" | ConfidenceTier;
   sort: SortId;
@@ -39,22 +37,12 @@ export const DEFAULT_FILTERS: FilterState = {
   edgeOnly: false,
 };
 
-export function fixtureProbability(
-  f: FeedFixture,
-  market: MarketFilterId,
-  allowPro = true,
-): number | null {
+export function fixtureProbability(f: FeedFixture, market: MarketId): number | null {
   if (!f.prediction) return null;
-  if (market === "all")
-    return bestPickAnyMarket(f.prediction, f.home.name, f.away.name, allowPro)?.probability ?? null;
   return bestPick(market, f.prediction, f.home.name, f.away.name)?.probability ?? null;
 }
 
-export function applyFilters(
-  fixtures: FeedFixture[],
-  filters: FilterState,
-  allowPro = true,
-): FeedFixture[] {
+export function applyFilters(fixtures: FeedFixture[], filters: FilterState): FeedFixture[] {
   const out = fixtures.filter((f) => {
     const key = dayKeyOf(f.utcDate);
     if (filters.day !== "all" && key !== filters.day) return false;
@@ -64,7 +52,7 @@ export function applyFilters(
 
     if (filters.minProb > 0 || filters.confidence !== "any") {
       if (!f.prediction) return false;
-      const p = fixtureProbability(f, filters.market, allowPro);
+      const p = fixtureProbability(f, filters.market);
       if (p === null || p * 100 < filters.minProb) return false;
       if (filters.confidence !== "any" && confidenceTier(f.prediction.confidence) !== filters.confidence)
         return false;
@@ -76,7 +64,7 @@ export function applyFilters(
     return true;
   });
 
-  const prob = (f: FeedFixture) => fixtureProbability(f, filters.market, allowPro) ?? -1;
+  const prob = (f: FeedFixture) => fixtureProbability(f, filters.market) ?? -1;
   const edge = (f: FeedFixture) =>
     f.prediction ? bestEdge(f.prediction, f.home.name, f.away.name).edge : -1;
 
@@ -115,11 +103,7 @@ export function activeFilterChips(
       reset: { codes: filters.codes.filter((c) => c !== code) },
     });
   if (filters.market !== "1x2")
-    chips.push({
-      key: "market",
-      label: filters.market === "all" ? "All markets" : filters.market.toUpperCase(),
-      reset: { market: "1x2" },
-    });
+    chips.push({ key: "market", label: filters.market.toUpperCase(), reset: { market: "1x2" } });
   if (filters.minProb > 0) chips.push({ key: "minProb", label: `${filters.minProb}%+`, reset: { minProb: 0 } });
   if (filters.confidence !== "any")
     chips.push({ key: "confidence", label: `${filters.confidence} confidence`, reset: { confidence: "any" } });

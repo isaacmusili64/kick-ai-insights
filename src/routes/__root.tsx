@@ -14,7 +14,8 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SiteNav, SiteFooter } from "../components/app/SiteNav";
 import { AccaProvider } from "../lib/acca";
 import { ProProvider } from "../lib/pro";
-import { HistoryProvider } from "../lib/history";
+import { AuthProvider } from "../lib/auth";
+import { Toaster } from "../components/ui/sonner";
 
 function NotFoundComponent() {
   return (
@@ -132,16 +133,17 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ProProvider>
-        <AccaProvider>
-          <HistoryProvider>
+      <AuthProvider>
+        <ProProvider>
+          <AccaProvider>
             <SiteNav />
             {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
             <Outlet />
             <SiteFooter />
-          </HistoryProvider>
-        </AccaProvider>
-      </ProProvider>
+            <Toaster />
+          </AccaProvider>
+        </ProProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

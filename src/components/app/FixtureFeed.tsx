@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
-import { COMPETITION_LIST, FREE_CODES, MAX_FEED_CODES, allFeedCodes, competitionName } from "@/lib/competitions";
+import { ALL_CODES, COMPETITION_LIST, FREE_CODES, MAX_FEED_CODES, competitionName } from "@/lib/competitions";
 import { applyFilters, DEFAULT_FILTERS, SORTS, type FilterState } from "@/lib/filters";
 import { dayLabel, dayLabelShort, groupByDay } from "@/lib/format";
 import { getFeed } from "@/lib/football.functions";
@@ -44,33 +44,30 @@ export function FixtureFeed({ limit }: { limit?: number }) {
 
   const fixtures = data?.fixtures ?? [];
   const days = useMemo(() => groupByDay(fixtures), [fixtures]);
-  const filtered = useMemo(() => applyFilters(fixtures, filters, isPro), [fixtures, filters, isPro]);
+  const filtered = useMemo(() => applyFilters(fixtures, filters), [fixtures, filters]);
   const grouped = useMemo(() => {
     const g = groupByDay(filtered);
     return limit ? g.slice(0, 2) : g;
   }, [filtered, limit]);
+
+  const competitionValue =
+    filters.codes.length > 1 ? "all" : filters.codes.length === 1 ? filters.codes[0]! : "free";
 
   const controls = (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       <Field label="Competition">
         <select
           className={selectClass}
-          value={
-            filters.codes.length === 0
-              ? "free"
-              : filters.codes.length === 1
-                ? filters.codes[0]
-                : "all"
-          }
+          value={competitionValue}
           onChange={(e) => {
             const value = e.target.value;
             if (value === "free") set({ codes: [] });
-            else if (value === "all") set({ codes: allFeedCodes(isPro) });
+            else if (value === "all") set({ codes: isPro ? [...ALL_CODES] : [...FREE_CODES] });
             else set({ codes: [value] });
           }}
         >
           <option value="free">Free leagues (4)</option>
-          <option value="all">All leagues (up to {MAX_FEED_CODES})</option>
+          <option value="all">All competitions{isPro ? "" : " · Pro"}</option>
           {COMPETITION_LIST.map((c) => (
             <option key={c.code} value={c.code} disabled={!c.free && !isPro}>
               {c.name}
@@ -85,7 +82,6 @@ export function FixtureFeed({ limit }: { limit?: number }) {
           value={filters.market}
           onChange={(e) => set({ market: e.target.value as FilterState["market"] })}
         >
-          <option value="all">All markets</option>
           {MARKETS.map((m) => (
             <option key={m.id} value={m.id} disabled={m.pro && !isPro}>
               {m.short}
@@ -184,10 +180,7 @@ export function FixtureFeed({ limit }: { limit?: number }) {
         <span className="tabular text-xs text-muted-foreground">{filtered.length} fixtures</span>
       </div>
 
-      {(filters.minProb > 0 ||
-        filters.confidence !== "any" ||
-        filters.codes.length > 0 ||
-        filters.market !== "1x2") && (
+      {(filters.minProb > 0 || filters.confidence !== "any" || filters.codes.length > 0) && (
         <div className="flex flex-wrap items-center gap-2">
           {filters.codes.map((c) => (
             <button
@@ -198,15 +191,6 @@ export function FixtureFeed({ limit }: { limit?: number }) {
               {competitionName(c)} <X className="h-3 w-3" />
             </button>
           ))}
-          {filters.market !== "1x2" && (
-            <button
-              onClick={() => set({ market: "1x2" })}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-[11px]"
-            >
-              {filters.market === "all" ? "All markets" : filters.market.toUpperCase()}{" "}
-              <X className="h-3 w-3" />
-            </button>
-          )}
           {filters.minProb > 0 && (
             <button
               onClick={() => set({ minProb: 0 })}
