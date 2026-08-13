@@ -14,7 +14,171 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      mpesa_payments: {
+        Row: {
+          amount_kes: number
+          checkout_request_id: string | null
+          created_at: string
+          id: string
+          merchant_request_id: string | null
+          mpesa_receipt: string | null
+          phone: string
+          plan: string
+          raw: Json | null
+          result_desc: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_kes: number
+          checkout_request_id?: string | null
+          created_at?: string
+          id?: string
+          merchant_request_id?: string | null
+          mpesa_receipt?: string | null
+          phone: string
+          plan: string
+          raw?: Json | null
+          result_desc?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_kes?: number
+          checkout_request_id?: string | null
+          created_at?: string
+          id?: string
+          merchant_request_id?: string | null
+          mpesa_receipt?: string | null
+          phone?: string
+          plan?: string
+          raw?: Json | null
+          result_desc?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      prediction_log: {
+        Row: {
+          actual_away: number | null
+          actual_home: number | null
+          away_team: string
+          competition_code: string
+          correct: boolean | null
+          created_at: string
+          expected_away_goals: number | null
+          expected_home_goals: number | null
+          fixture_id: number
+          graded_at: string | null
+          home_team: string
+          id: string
+          kickoff: string
+          market: string
+          pick: string
+          probability: number
+          status: string
+        }
+        Insert: {
+          actual_away?: number | null
+          actual_home?: number | null
+          away_team: string
+          competition_code: string
+          correct?: boolean | null
+          created_at?: string
+          expected_away_goals?: number | null
+          expected_home_goals?: number | null
+          fixture_id: number
+          graded_at?: string | null
+          home_team: string
+          id?: string
+          kickoff: string
+          market: string
+          pick: string
+          probability: number
+          status?: string
+        }
+        Update: {
+          actual_away?: number | null
+          actual_home?: number | null
+          away_team?: string
+          competition_code?: string
+          correct?: boolean | null
+          created_at?: string
+          expected_away_goals?: number | null
+          expected_home_goals?: number | null
+          fixture_id?: number
+          graded_at?: string | null
+          home_team?: string
+          id?: string
+          kickoff?: string
+          market?: string
+          pick?: string
+          probability?: number
+          status?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          email: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          amount_kes: number
+          created_at: string
+          expires_at: string
+          id: string
+          mpesa_receipt: string | null
+          plan: string
+          starts_at: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          amount_kes: number
+          created_at?: string
+          expires_at: string
+          id?: string
+          mpesa_receipt?: string | null
+          plan: string
+          starts_at?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          amount_kes?: number
+          created_at?: string
+          expires_at?: string
+          id?: string
+          mpesa_receipt?: string | null
+          plan?: string
+          starts_at?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
