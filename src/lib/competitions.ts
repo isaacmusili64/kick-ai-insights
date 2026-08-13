@@ -32,10 +32,3 @@ export function allFeedCodes(isPro: boolean): string[] {
     .slice(0, MAX_FEED_CODES)
     .map((c) => c.code);
 }
-
-/**
- * @deprecated kept only so a stray `ALL_CODES` import doesn't break the
- * build — this is every competition code, uncapped and not pro-filtered.
- * Use `allFeedCodes(isPro)` instead, which is what FixtureFeed.tsx uses.
- */
-export const ALL_CODES = COMPETITION_LIST.map((c) => c.code);
