@@ -57,6 +57,7 @@ export function SiteNav() {
             ) : (
               <Link
                 to="/auth"
+                search={{ next: undefined }}
                 className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 Sign in
