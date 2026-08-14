@@ -3,9 +3,9 @@ import { Layers, Lock } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCompetitionFeed } from "@/hooks/useCompetitionFeed";
-import { buildAutoAccas } from "@/lib/autoacca";
+import { accaPool, buildAutoAccas } from "@/lib/autoacca";
 import { ALL_CODES, FREE_CODES } from "@/lib/competitions";
-import { fixtureDateLine } from "@/lib/format";
+import { dayLabel, fixtureDateLine } from "@/lib/format";
 import { pct } from "@/lib/markets";
 import { usePro } from "@/lib/pro";
 
@@ -35,14 +35,17 @@ function AccaPage() {
   const codes = isPro ? [...ALL_CODES] : [...FREE_CODES];
   const { fixtures, isPending, isLoadingMore, loaded, total } = useCompetitionFeed(codes);
   const accas = buildAutoAccas(fixtures, isPro);
+  const { dayKey } = accaPool(fixtures);
 
   return (
     <main className="mx-auto max-w-3xl space-y-5 px-4 py-6 pb-24">
       <header>
-        <h1 className="text-2xl font-bold">Today&apos;s ready-made accas</h1>
+        <h1 className="text-2xl font-bold">
+          {dayKey ? `${dayLabel(dayKey)}'s ready-made accas` : "Ready-made accas"}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Built for you from today&apos;s strongest calls — no picking required. Each slip shows the
-          combined chance of every leg landing and the fair price that goes with it.
+          Built for you from the strongest calls on the next match day — no picking required. Each
+          slip shows the combined chance of every leg landing and the fair price that goes with it.
         </p>
       </header>
 
@@ -53,7 +56,7 @@ function AccaPage() {
         </div>
       ) : accas.length === 0 ? (
         <p className="card-surface p-6 text-sm text-muted-foreground">
-          Nothing strong enough on today&apos;s card yet. Check back closer to kick-off, or browse{" "}
+          Nothing strong enough on the card yet. Check back closer to kick-off, or browse{" "}
           <Link to="/" className="font-semibold text-primary">
             today&apos;s predictions
           </Link>
