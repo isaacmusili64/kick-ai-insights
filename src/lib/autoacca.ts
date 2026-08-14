@@ -111,7 +111,9 @@ export function buildAutoAccas(fixtures: FeedFixture[], isPro: boolean): AutoAcc
   return TEMPLATES.filter((t) => isPro || !t.pro)
     .map((t) => {
       const source = t.source === "safe" ? safe : value;
-      const legs = source.filter((l) => l.probability >= t.min).slice(0, t.legs);
+      let legs = source.filter((l) => l.probability >= t.min).slice(0, t.legs);
+      // Thin cards shouldn't leave the page empty: fall back to the best legs available.
+      if (legs.length < 2) legs = source.filter((l) => l.probability >= 0.45).slice(0, t.legs);
       const combined = legs.length ? legs.reduce((a, l) => a * l.probability, 1) : 0;
       return {
         id: t.id,
