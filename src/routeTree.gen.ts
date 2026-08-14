@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccaRouteImport } from './routes/acca'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as PerformanceRouteImport } from './routes/performance'
+import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
 import { Route as ProRouteImport } from './routes/pro'
 import { Route as MatchMatchIdRouteImport } from './routes/match.$matchId'
 import { Route as ApiPublicMpesaCallbackRouteImport } from './routes/api/public/mpesa/callback'
@@ -37,6 +38,11 @@ const PerformanceRoute = PerformanceRouteImport.update({
   path: '/performance',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyPolicyRoute = PrivacyPolicyRouteImport.update({
+  id: '/privacy-policy',
+  path: '/privacy-policy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProRoute = ProRouteImport.update({
   id: '/pro',
   path: '/pro',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/acca': typeof AccaRoute
   '/auth': typeof AuthRoute
   '/performance': typeof PerformanceRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/acca': typeof AccaRoute
   '/auth': typeof AuthRoute
   '/performance': typeof PerformanceRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/acca': typeof AccaRoute
   '/auth': typeof AuthRoute
   '/performance': typeof PerformanceRoute
+  '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/acca'
     | '/auth'
     | '/performance'
+    | '/privacy-policy'
     | '/pro'
     | '/match/$matchId'
     | '/api/public/mpesa/callback'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/acca'
     | '/auth'
     | '/performance'
+    | '/privacy-policy'
     | '/pro'
     | '/match/$matchId'
     | '/api/public/mpesa/callback'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/acca'
     | '/auth'
     | '/performance'
+    | '/privacy-policy'
     | '/pro'
     | '/match/$matchId'
     | '/api/public/mpesa/callback'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   AccaRoute: typeof AccaRoute
   AuthRoute: typeof AuthRoute
   PerformanceRoute: typeof PerformanceRoute
+  PrivacyPolicyRoute: typeof PrivacyPolicyRoute
   ProRoute: typeof ProRoute
   MatchMatchIdRoute: typeof MatchMatchIdRoute
   ApiPublicMpesaCallbackRoute: typeof ApiPublicMpesaCallbackRoute
@@ -151,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PerformanceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy-policy': {
+      id: '/privacy-policy'
+      path: '/privacy-policy'
+      fullPath: '/privacy-policy'
+      preLoaderRoute: typeof PrivacyPolicyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pro': {
       id: '/pro'
       path: '/pro'
@@ -180,6 +200,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccaRoute: AccaRoute,
   AuthRoute: AuthRoute,
   PerformanceRoute: PerformanceRoute,
+  PrivacyPolicyRoute: PrivacyPolicyRoute,
   ProRoute: ProRoute,
   MatchMatchIdRoute: MatchMatchIdRoute,
   ApiPublicMpesaCallbackRoute: ApiPublicMpesaCallbackRoute,
