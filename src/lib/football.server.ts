@@ -405,7 +405,6 @@ export async function fetchAnalysis(matchId: number) {
   } catch {
     strength = null;
   }
-  const [priced] = priceFixtures([fixture], strength);
   const table = strength
     ? {
         home: strength.rows.find((r) => r.team.id === fixture.home.id) ?? null,
@@ -420,9 +419,32 @@ export async function fetchAnalysis(matchId: number) {
     fetchHeadToHead(matchId).catch(() => []),
   ]);
 
+  // Match-page prediction blends the season table view (venue splits + form)
+  // with a recency-weighted read of each side's last dozen games.
+  const [priced] = priceFixtures([fixture], strength);
+  let prediction = priced?.prediction ?? null;
+
+  const histGames = (homeHistory?.leagueGoalGames ?? 0) + (awayHistory?.leagueGoalGames ?? 0);
+  const histAvg = histGames
+    ? ((homeHistory?.leagueGoalSum ?? 0) + (awayHistory?.leagueGoalSum ?? 0)) / histGames / 2
+    : null;
+  const leagueAvgGoals = strength?.leagueAvgGoals ?? histAvg ?? 1.35;
+
+  if (homeHistory?.matches.length && awayHistory?.matches.length) {
+    const homeRecent = buildTeamModel(homeHistory.matches, leagueAvgGoals);
+    const awayRecent = buildTeamModel(awayHistory.matches, leagueAvgGoals);
+    const homeTable = table?.home ? teamModelFromStanding(table.home, leagueAvgGoals, "home") : null;
+    const awayTable = table?.away ? teamModelFromStanding(table.away, leagueAvgGoals, "away") : null;
+    prediction = predict(
+      homeTable ? blendModels(homeTable, homeRecent, 0.55) : homeRecent,
+      awayTable ? blendModels(awayTable, awayRecent, 0.55) : awayRecent,
+      leagueAvgGoals,
+    );
+  }
+
   return {
     fixture,
-    prediction: priced?.prediction ?? null,
+    prediction,
     table,
     h2h,
     history: {
