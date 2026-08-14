@@ -88,12 +88,26 @@ export function SiteNav() {
 export function SiteFooter() {
   return (
     <footer className="border-t border-border px-4 py-8 pb-24 sm:pb-8">
-      <div className="mx-auto max-w-6xl space-y-2 text-xs text-muted-foreground">
+      <div className="mx-auto max-w-6xl space-y-3 text-xs text-muted-foreground">
         <p className="font-semibold text-foreground">PitchModel</p>
         <p>
           Every probability is worked out from live league data and checked against results on our
           public track record. Predictions are statistical analysis, not betting advice. 18+.
         </p>
+        <nav className="flex flex-wrap gap-x-4 gap-y-1">
+          <Link to="/performance" className="font-medium hover:text-foreground">
+            Track record
+          </Link>
+          <Link to="/pro" className="font-medium hover:text-foreground">
+            Pro passes
+          </Link>
+          <Link to="/privacy-policy" className="font-medium hover:text-foreground">
+            Privacy policy
+          </Link>
+          <Link to="/refund-policy" className="font-medium hover:text-foreground">
+            Refund policy (no refunds)
+          </Link>
+        </nav>
       </div>
     </footer>
   );
