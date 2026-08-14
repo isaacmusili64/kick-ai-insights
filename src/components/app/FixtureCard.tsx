@@ -1,26 +1,20 @@
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, Plus, Check } from "lucide-react";
+import { ChevronRight, Layers } from "lucide-react";
 
 import { ConfidenceBadge, EdgeBadge } from "./Badges";
 import { Crest } from "./Crest";
 import { ProbabilityBar } from "./ProbabilityBar";
-import { useAcca } from "@/lib/acca";
 import { bestEdge, EDGE_THRESHOLD } from "@/lib/edge";
 import { kickoff } from "@/lib/format";
 import { bestPick, headlinePicks, pct, type MarketId } from "@/lib/markets";
-import { FREE_ACCA_SELECTIONS, usePro } from "@/lib/pro";
 import type { FeedFixture } from "@/lib/types";
 
 export function FixtureCard({ fixture, market }: { fixture: FeedFixture; market: MarketId }) {
   const p = fixture.prediction;
-  const acca = useAcca();
-  const { isPro } = usePro();
 
   const focus = p ? bestPick(market, p, fixture.home.name, fixture.away.name) : null;
   const chips = p ? headlinePicks(p, fixture.home.name, fixture.away.name) : [];
   const edge = p ? bestEdge(p, fixture.home.name, fixture.away.name) : null;
-  const selected = focus ? acca.has(fixture.id, focus.label) : false;
-  const limited = !isPro && acca.selections.length >= FREE_ACCA_SELECTIONS && !selected;
 
   return (
     <article className="card-surface overflow-hidden transition-shadow hover:shadow-lift">
@@ -94,26 +88,12 @@ export function FixtureCard({ fixture, market }: { fixture: FeedFixture; market:
       </Link>
 
       <div className="flex items-center justify-between gap-3 border-t border-border bg-surface/60 px-4 py-2">
-        <button
-          type="button"
-          disabled={!focus || limited}
-          onClick={() => {
-            if (!focus) return;
-            if (selected) acca.remove(fixture.id, focus.label);
-            else
-              acca.add({
-                matchId: fixture.id,
-                fixture: `${fixture.home.name} v ${fixture.away.name}`,
-                market: focus.market,
-                label: focus.label,
-                probability: focus.probability,
-              });
-          }}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+        <Link
+          to="/acca"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
         >
-          {selected ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5" />}
-          {selected ? "In acca" : limited ? `Free limit ${FREE_ACCA_SELECTIONS}` : "Add to acca"}
-        </button>
+          <Layers className="h-3.5 w-3.5" /> Today&apos;s accas
+        </Link>
         <Link
           to="/match/$matchId"
           params={{ matchId: String(fixture.id) }}

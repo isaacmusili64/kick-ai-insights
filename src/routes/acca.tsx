@@ -1,24 +1,27 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Trash2 } from "lucide-react";
+import { Layers, Lock } from "lucide-react";
 
-import { ACCA_STYLES, useAcca } from "@/lib/acca";
-import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCompetitionFeed } from "@/hooks/useCompetitionFeed";
+import { accaPool, buildAutoAccas } from "@/lib/autoacca";
+import { ALL_CODES, FREE_CODES } from "@/lib/competitions";
+import { dayLabel, fixtureDateLine } from "@/lib/format";
 import { pct } from "@/lib/markets";
-import { FREE_ACCA_SELECTIONS, usePro } from "@/lib/pro";
+import { usePro } from "@/lib/pro";
 
 export const Route = createFileRoute("/acca")({
   head: () => ({
     meta: [
-      { title: "Smart Acca Builder — PitchModel" },
+      { title: "Today's Ready-Made Accas — PitchModel" },
       {
         name: "description",
         content:
-          "Combine model selections into an accumulator and see the true combined model probability and fair price.",
+          "Ready-made accumulators built automatically from today's strongest model picks, with the combined chance and fair price worked out for you.",
       },
-      { property: "og:title", content: "Smart Acca Builder — PitchModel" },
+      { property: "og:title", content: "Today's Ready-Made Accas — PitchModel" },
       {
         property: "og:description",
-        content: "Build accumulators from model probabilities and see the combined chance and fair odds.",
+        content: "Accumulators built from today's best model picks — combined chance and fair odds included.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -28,108 +31,101 @@ export const Route = createFileRoute("/acca")({
 });
 
 function AccaPage() {
-  const { selections, remove, clear, combined, style, setStyle } = useAcca();
   const { isPro } = usePro();
-  const styleDef = ACCA_STYLES.find((s) => s.id === style)!;
-  const flagged = selections.filter((s) => s.probability < styleDef.min);
+  const codes = isPro ? [...ALL_CODES] : [...FREE_CODES];
+  const { fixtures, isPending, isLoadingMore, loaded, total } = useCompetitionFeed(codes);
+  const accas = buildAutoAccas(fixtures, isPro);
+  const { dayKey } = accaPool(fixtures);
 
   return (
     <main className="mx-auto max-w-3xl space-y-5 px-4 py-6 pb-24">
       <header>
-        <h1 className="text-2xl font-bold">Smart acca builder</h1>
+        <h1 className="text-2xl font-bold">
+          {dayKey ? `${dayLabel(dayKey)}'s ready-made accas` : "Ready-made accas"}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Model probabilities multiplied out, so you can see what an accumulator is really worth.
+          Built for you from the strongest calls on the next match day — no picking required. Each
+          slip shows the combined chance of every leg landing and the fair price that goes with it.
         </p>
       </header>
 
-      <div className="card-surface p-5">
-        <div className="flex flex-wrap gap-2">
-          {ACCA_STYLES.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setStyle(s.id)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                style === s.id
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-card text-muted-foreground"
-              }`}
-            >
-              {s.label}
-            </button>
+      {isPending ? (
+        <div className="space-y-3">
+          <Skeleton className="h-52 rounded-2xl" />
+          <Skeleton className="h-52 rounded-2xl" />
+        </div>
+      ) : accas.length === 0 ? (
+        <p className="card-surface p-6 text-sm text-muted-foreground">
+          Nothing strong enough on the card yet. Check back closer to kick-off, or browse{" "}
+          <Link to="/" className="font-semibold text-primary">
+            today&apos;s predictions
+          </Link>
+          .
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {isLoadingMore ? (
+            <p className="text-xs text-muted-foreground">
+              Still checking competitions… {loaded} of {total} ready.
+            </p>
+          ) : null}
+          {accas.map((a) => (
+            <section key={a.id} className="card-surface p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="flex items-center gap-2 text-base font-bold">
+                  <Layers className="h-4 w-4 text-primary" /> {a.name}
+                </h2>
+                <span className="tabular rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] font-semibold">
+                  {a.legs.length} legs · {pct(a.combined)} chance · fair odds{" "}
+                  {a.fairOdds ? a.fairOdds.toFixed(2) : "—"}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{a.note}</p>
+
+              <ul className="mt-4 space-y-2">
+                {a.legs.map((l) => (
+                  <li key={`${a.id}-${l.matchId}`}>
+                    <Link
+                      to="/match/$matchId"
+                      params={{ matchId: String(l.matchId) }}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border bg-surface p-3 transition-colors hover:border-primary/40"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold">{l.label}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {l.fixture} · {l.competition} · {fixtureDateLine(l.kickoff)}
+                        </span>
+                      </span>
+                      <span className="tabular font-bold text-primary">{pct(l.probability)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">{styleDef.note}</p>
+      )}
 
-        {selections.length === 0 ? (
-          <p className="mt-5 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            No selections yet. Add picks from any{" "}
-            <Link to="/" className="font-semibold text-primary">
-              fixture card
-            </Link>
-            .
-          </p>
-        ) : (
-          <>
-            <ul className="mt-5 space-y-2">
-              {selections.map((s) => (
-                <li
-                  key={`${s.matchId}-${s.label}`}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border bg-surface p-3"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{s.label}</p>
-                    <p className="truncate text-[11px] text-muted-foreground">{s.fixture}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`tabular font-bold ${s.probability < styleDef.min ? "text-destructive" : "text-primary"}`}
-                    >
-                      {pct(s.probability)}
-                    </span>
-                    <button onClick={() => remove(s.matchId, s.label)} aria-label="Remove selection">
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              {[
-                ["Legs", `${selections.length}`],
-                ["Combined chance", pct(combined)],
-                ["Fair odds", combined > 0 ? (1 / combined).toFixed(2) : "—"],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-border bg-surface p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-                  <p className="tabular mt-1 text-lg font-bold">{value}</p>
-                </div>
-              ))}
-            </div>
-
-            {flagged.length ? (
-              <p className="mt-3 text-xs text-destructive">
-                {flagged.length} selection{flagged.length > 1 ? "s" : ""} below your {styleDef.label.toLowerCase()}{" "}
-                threshold of {Math.round(styleDef.min * 100)}%.
-              </p>
-            ) : null}
-
-            <Button variant="outline" size="sm" className="mt-4" onClick={clear}>
-              Clear acca
-            </Button>
-          </>
-        )}
-
-        {!isPro ? (
-          <p className="mt-5 rounded-xl border border-gold/40 bg-gold/10 p-3 text-xs text-gold">
-            Free accas are capped at {FREE_ACCA_SELECTIONS} legs.{" "}
+      {!isPro ? (
+        <p className="card-surface flex items-start gap-2 border-gold/40 p-4 text-xs text-gold">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Free gives you two slips a day from the four open leagues.{" "}
             <Link to="/pro" className="font-bold underline">
-              PitchModel Pro
+              A Pro pass
             </Link>{" "}
-            unlocks unlimited legs and every market.
-          </p>
-        ) : null}
-      </div>
+            adds bigger multi-leg slips, value slips and every competition on the board.
+          </span>
+        </p>
+      ) : null}
+
+      <p className="text-[11px] text-muted-foreground">
+        Statistical analysis, not betting advice. 18+. See our{" "}
+        <Link to="/refund-policy" className="underline">
+          refund policy
+        </Link>
+        .
+      </p>
     </main>
   );
 }

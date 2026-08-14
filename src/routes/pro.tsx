@@ -143,6 +143,23 @@ function ProPage() {
         ))}
       </div>
 
+      {isPro && pass ? (
+        <section className="card-surface space-y-2 p-5 text-sm">
+          <h2 className="text-sm font-bold uppercase tracking-wide">You&apos;re all set</h2>
+          <p className="text-muted-foreground">
+            Your {pass.plan} pass is already running, so there is nothing to pay. You can buy your
+            next pass here once this one runs out on{" "}
+            <span className="font-semibold text-foreground">
+              {new Date(pass.expires_at).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            </span>
+            .
+          </p>
+          <Button onClick={() => void navigate({ to: "/" })}>See today&apos;s predictions</Button>
+        </section>
+      ) : (
       <section className="card-surface space-y-4 p-5">
         <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide">
           <Smartphone className="h-4 w-4 text-primary" /> Pay with M-Pesa
@@ -183,7 +200,15 @@ function ProPage() {
           </div>
         )}
         {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
+        <p className="text-[11px] text-muted-foreground">
+          Passes are delivered instantly and are non-refundable — see our{" "}
+          <Link to="/refund-policy" className="font-semibold text-primary underline">
+            refund policy
+          </Link>
+          .
+        </p>
       </section>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <section className="card-surface p-5">

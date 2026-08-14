@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 const FeedInput = z.object({
-  codes: z.array(z.string().min(2).max(5)).min(1).max(5),
+  codes: z.array(z.string().min(2).max(5)).min(1).max(20),
   days: z.number().int().min(1).max(30).optional(),
 });
 const MatchInput = z.object({ matchId: z.number().int().positive() });
@@ -35,6 +35,22 @@ export const getStandings = createServerFn({ method: "GET" })
       return { ...strength, error: null as string | null };
     } catch (error) {
       return { rows: [], leagueAvgGoals: 0, error: (error as Error).message };
+    }
+  });
+
+/**
+ * One competition at a time, so the board can load many leagues in parallel
+ * queries instead of one long request that trips the data provider's limit.
+ */
+export const getCompetitionFeed = createServerFn({ method: "GET" })
+  .inputValidator((input: unknown) => CompetitionInput.parse(input))
+  .handler(async ({ data }) => {
+    const { fetchCompetitionFeed } = await import("./football.server");
+    try {
+      const result = await fetchCompetitionFeed(data.code, 21);
+      return { code: data.code, fixtures: result.fixtures, modelled: result.modelled, error: null as string | null };
+    } catch (error) {
+      return { code: data.code, fixtures: [], modelled: false, error: (error as Error).message };
     }
   });
 

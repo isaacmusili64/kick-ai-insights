@@ -1,5 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
 import { SlidersHorizontal, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -8,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
+import { useCompetitionFeed } from "@/hooks/useCompetitionFeed";
 import { ALL_CODES, COMPETITION_LIST, FREE_CODES, MAX_FEED_CODES, competitionName } from "@/lib/competitions";
 import { applyFilters, DEFAULT_FILTERS, SORTS, type FilterState } from "@/lib/filters";
 import { dayLabel, dayLabelShort, groupByDay } from "@/lib/format";
-import { getFeed } from "@/lib/football.functions";
 import { MARKETS } from "@/lib/markets";
 import { usePro } from "@/lib/pro";
 
@@ -34,15 +32,8 @@ export function FixtureFeed({ limit }: { limit?: number }) {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const set = (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch }));
 
-  const codes = filters.codes.length ? filters.codes.slice(0, MAX_FEED_CODES) : FREE_CODES;
-  const feedFn = useServerFn(getFeed);
-  const { data, isPending } = useQuery({
-    queryKey: ["feed", codes.join(",")],
-    queryFn: () => feedFn({ data: { codes, days: 21 } }),
-    staleTime: 5 * 60_000,
-  });
-
-  const fixtures = data?.fixtures ?? [];
+  const codes = filters.codes.length ? filters.codes.slice(0, MAX_FEED_CODES) : [...FREE_CODES];
+  const { fixtures, isPending, isLoadingMore, loaded, total } = useCompetitionFeed(codes);
   const days = useMemo(() => groupByDay(fixtures), [fixtures]);
   const filtered = useMemo(() => applyFilters(fixtures, filters), [fixtures, filters]);
   const grouped = useMemo(() => {
@@ -224,12 +215,17 @@ export function FixtureFeed({ limit }: { limit?: number }) {
         </div>
       ) : grouped.length === 0 ? (
         <p className="card-surface p-6 text-sm text-muted-foreground">
-          {data?.error
-            ? "Live data is rate limited right now (free tier allows 10 requests per minute). Try again in a moment."
-            : "No fixtures match these filters. Loosen the probability or confidence filter."}
+          No fixtures match these filters. Loosen the probability or confidence filter, or pick a
+          different date.
         </p>
       ) : (
-        grouped.map((day) => (
+        <>
+        {isLoadingMore ? (
+          <p className="text-xs text-muted-foreground">
+            Loading competitions… {loaded} of {total} ready.
+          </p>
+        ) : null}
+        {grouped.map((day) => (
           <section key={day.key} className="space-y-3">
             <h3 className="flex items-center gap-3 pt-2 text-sm font-bold">
               {dayLabel(day.key)}
@@ -243,7 +239,8 @@ export function FixtureFeed({ limit }: { limit?: number }) {
               ))}
             </div>
           </section>
-        ))
+        ))}
+        </>
       )}
     </div>
   );

@@ -1,7 +1,13 @@
 /** football-data.org API access + response shaping. Server only. */
 
-import { predict, type ExtendedPrediction } from "./model";
-import { leagueAverage, teamModelFromStanding, type LeagueStrength, type StandingRow } from "./strength";
+import { buildTeamModel, predict, type ExtendedPrediction } from "./model";
+import {
+  blendModels,
+  leagueAverage,
+  teamModelFromStanding,
+  type LeagueStrength,
+  type StandingRow,
+} from "./strength";
 import type { Fixture, FeedFixture, CompetitionStatus } from "./types";
 
 export type { Fixture, FeedFixture, CompetitionStatus } from "./types";
@@ -207,12 +213,38 @@ type ApiStandings = {
       points: number;
       goalsFor: number;
       goalsAgainst: number;
+      form?: string | null;
     }[];
   }[];
 };
 
+function parseForm(form?: string | null): ("W" | "D" | "L")[] {
+  if (!form) return [];
+  return form
+    .split(/[,\s]+/)
+    .map((s) => s.trim().toUpperCase())
+    .filter((s): s is "W" | "D" | "L" => s === "W" || s === "D" || s === "L")
+    .reverse();
+}
+
 export async function fetchLeagueStrength(code: string): Promise<LeagueStrength> {
   const data = await api<ApiStandings>(`/competitions/${code}/standings`, 1_800_000);
+  const venueRow = (type: "HOME" | "AWAY", teamId: number) => {
+    const t = data.standings
+      .filter((s) => s.type === type)
+      .flatMap((s) => s.table)
+      .find((r) => r.team.id === teamId);
+    if (!t) return null;
+    return {
+      playedGames: t.playedGames,
+      won: t.won,
+      draw: t.draw,
+      lost: t.lost,
+      goalsFor: t.goalsFor,
+      goalsAgainst: t.goalsAgainst,
+    };
+  };
+
   const rows: StandingRow[] = data.standings
     .filter((s) => s.type === "TOTAL")
     .flatMap((s) => s.table)
@@ -231,6 +263,9 @@ export async function fetchLeagueStrength(code: string): Promise<LeagueStrength>
       points: r.points,
       goalsFor: r.goalsFor,
       goalsAgainst: r.goalsAgainst,
+      home: venueRow("HOME", r.team.id),
+      away: venueRow("AWAY", r.team.id),
+      form: parseForm(r.form),
     }));
   return { rows, leagueAvgGoals: leagueAverage(rows) };
 }
@@ -250,8 +285,8 @@ function priceFixtures(fixtures: Fixture[], strength: LeagueStrength | null): Fe
     return {
       ...f,
       prediction: predict(
-        teamModelFromStanding(home, strength.leagueAvgGoals),
-        teamModelFromStanding(away, strength.leagueAvgGoals),
+        teamModelFromStanding(home, strength.leagueAvgGoals, "home"),
+        teamModelFromStanding(away, strength.leagueAvgGoals, "away"),
         strength.leagueAvgGoals,
       ),
     };
@@ -370,7 +405,6 @@ export async function fetchAnalysis(matchId: number) {
   } catch {
     strength = null;
   }
-  const [priced] = priceFixtures([fixture], strength);
   const table = strength
     ? {
         home: strength.rows.find((r) => r.team.id === fixture.home.id) ?? null,
@@ -385,9 +419,32 @@ export async function fetchAnalysis(matchId: number) {
     fetchHeadToHead(matchId).catch(() => []),
   ]);
 
+  // Match-page prediction blends the season table view (venue splits + form)
+  // with a recency-weighted read of each side's last dozen games.
+  const [priced] = priceFixtures([fixture], strength);
+  let prediction = priced?.prediction ?? null;
+
+  const histGames = (homeHistory?.leagueGoalGames ?? 0) + (awayHistory?.leagueGoalGames ?? 0);
+  const histAvg = histGames
+    ? ((homeHistory?.leagueGoalSum ?? 0) + (awayHistory?.leagueGoalSum ?? 0)) / histGames / 2
+    : null;
+  const leagueAvgGoals = strength?.leagueAvgGoals ?? histAvg ?? 1.35;
+
+  if (homeHistory?.matches.length && awayHistory?.matches.length) {
+    const homeRecent = buildTeamModel(homeHistory.matches, leagueAvgGoals);
+    const awayRecent = buildTeamModel(awayHistory.matches, leagueAvgGoals);
+    const homeTable = table?.home ? teamModelFromStanding(table.home, leagueAvgGoals, "home") : null;
+    const awayTable = table?.away ? teamModelFromStanding(table.away, leagueAvgGoals, "away") : null;
+    prediction = predict(
+      homeTable ? blendModels(homeTable, homeRecent, 0.55) : homeRecent,
+      awayTable ? blendModels(awayTable, awayRecent, 0.55) : awayRecent,
+      leagueAvgGoals,
+    );
+  }
+
   return {
     fixture,
-    prediction: priced?.prediction ?? null,
+    prediction,
     table,
     h2h,
     history: {

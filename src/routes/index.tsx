@@ -1,17 +1,16 @@
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { ArrowRight, Sparkles } from "lucide-react";
 
 import pitchHero from "@/assets/pitch-hero.jpg";
 import { EdgeBadge } from "@/components/app/Badges";
 import { FixtureFeed } from "@/components/app/FixtureFeed";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FREE_CODES } from "@/lib/competitions";
+import { useCompetitionFeed } from "@/hooks/useCompetitionFeed";
+import { ALL_CODES, FREE_CODES } from "@/lib/competitions";
 import { bestEdge } from "@/lib/edge";
 import { dayKeyOf, fixtureDateLine, todayKey } from "@/lib/format";
-import { getFeed } from "@/lib/football.functions";
 import { bestPick, pct } from "@/lib/markets";
+import { usePro } from "@/lib/pro";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -36,17 +35,11 @@ export const Route = createFileRoute("/")({
 });
 
 function TodaysModelCard() {
-  const feedFn = useServerFn(getFeed);
-  const { data, isPending } = useQuery({
-    queryKey: ["feed", FREE_CODES.join(",")],
-    queryFn: () => feedFn({ data: { codes: FREE_CODES, days: 21 } }),
-    staleTime: 5 * 60_000,
-  });
+  const { isPro } = usePro();
+  const { fixtures, isPending } = useCompetitionFeed(isPro ? [...ALL_CODES] : [...FREE_CODES]);
 
   const today = todayKey();
-  const priced = (data?.fixtures ?? []).filter(
-    (f) => f.prediction && dayKeyOf(f.utcDate) === today,
-  );
+  const priced = fixtures.filter((f) => f.prediction && dayKeyOf(f.utcDate) === today);
   const top = [...priced]
     .sort((a, b) => (b.prediction!.confidence ?? 0) - (a.prediction!.confidence ?? 0))
     .slice(0, 3);

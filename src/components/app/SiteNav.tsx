@@ -1,19 +1,17 @@
 import { Link } from "@tanstack/react-router";
 import { History, Layers, LineChart, Sparkles } from "lucide-react";
 
-import { useAcca } from "@/lib/acca";
 import { useAuth } from "@/lib/auth";
 import { usePro } from "@/lib/pro";
 
 const LINKS = [
   { to: "/" as const, label: "Predictions", icon: LineChart },
-  { to: "/acca" as const, label: "Smart acca", icon: Layers },
+  { to: "/acca" as const, label: "Today's accas", icon: Layers },
   { to: "/performance" as const, label: "Track record", icon: History },
   { to: "/pro" as const, label: "Go Pro", icon: Sparkles },
 ];
 
 export function SiteNav() {
-  const { selections } = useAcca();
   const { isPro } = usePro();
   const { user, signOut } = useAuth();
 
@@ -42,9 +40,6 @@ export function SiteNav() {
                 className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 {l.label}
-                {l.to === "/acca" && selections.length ? (
-                  <span className="ml-1.5 tabular text-primary">{selections.length}</span>
-                ) : null}
               </Link>
             ))}
             {user ? (
@@ -88,12 +83,26 @@ export function SiteNav() {
 export function SiteFooter() {
   return (
     <footer className="border-t border-border px-4 py-8 pb-24 sm:pb-8">
-      <div className="mx-auto max-w-6xl space-y-2 text-xs text-muted-foreground">
+      <div className="mx-auto max-w-6xl space-y-3 text-xs text-muted-foreground">
         <p className="font-semibold text-foreground">PitchModel</p>
         <p>
           Every probability is worked out from live league data and checked against results on our
           public track record. Predictions are statistical analysis, not betting advice. 18+.
         </p>
+        <nav className="flex flex-wrap gap-x-4 gap-y-1">
+          <Link to="/performance" className="font-medium hover:text-foreground">
+            Track record
+          </Link>
+          <Link to="/pro" className="font-medium hover:text-foreground">
+            Pro passes
+          </Link>
+          <Link to="/privacy-policy" className="font-medium hover:text-foreground">
+            Privacy policy
+          </Link>
+          <Link to="/refund-policy" className="font-medium hover:text-foreground">
+            Refund policy (no refunds)
+          </Link>
+        </nav>
       </div>
     </footer>
   );
