@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as PerformanceRouteImport } from './routes/performance'
 import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
 import { Route as ProRouteImport } from './routes/pro'
+import { Route as RefundPolicyRouteImport } from './routes/refund-policy'
 import { Route as MatchMatchIdRouteImport } from './routes/match.$matchId'
 import { Route as ApiPublicMpesaCallbackRouteImport } from './routes/api/public/mpesa/callback'
 
@@ -48,6 +49,11 @@ const ProRoute = ProRouteImport.update({
   path: '/pro',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RefundPolicyRoute = RefundPolicyRouteImport.update({
+  id: '/refund-policy',
+  path: '/refund-policy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MatchMatchIdRoute = MatchMatchIdRouteImport.update({
   id: '/match/$matchId',
   path: '/match/$matchId',
@@ -66,6 +72,7 @@ export interface FileRoutesByFullPath {
   '/performance': typeof PerformanceRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
+  '/refund-policy': typeof RefundPolicyRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
 }
@@ -76,6 +83,7 @@ export interface FileRoutesByTo {
   '/performance': typeof PerformanceRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
+  '/refund-policy': typeof RefundPolicyRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
 }
@@ -87,6 +95,7 @@ export interface FileRoutesById {
   '/performance': typeof PerformanceRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
+  '/refund-policy': typeof RefundPolicyRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
 }
@@ -99,6 +108,7 @@ export interface FileRouteTypes {
     | '/performance'
     | '/privacy-policy'
     | '/pro'
+    | '/refund-policy'
     | '/match/$matchId'
     | '/api/public/mpesa/callback'
   fileRoutesByTo: FileRoutesByTo
@@ -109,6 +119,7 @@ export interface FileRouteTypes {
     | '/performance'
     | '/privacy-policy'
     | '/pro'
+    | '/refund-policy'
     | '/match/$matchId'
     | '/api/public/mpesa/callback'
   id:
@@ -119,6 +130,7 @@ export interface FileRouteTypes {
     | '/performance'
     | '/privacy-policy'
     | '/pro'
+    | '/refund-policy'
     | '/match/$matchId'
     | '/api/public/mpesa/callback'
   fileRoutesById: FileRoutesById
@@ -130,6 +142,7 @@ export interface RootRouteChildren {
   PerformanceRoute: typeof PerformanceRoute
   PrivacyPolicyRoute: typeof PrivacyPolicyRoute
   ProRoute: typeof ProRoute
+  RefundPolicyRoute: typeof RefundPolicyRoute
   MatchMatchIdRoute: typeof MatchMatchIdRoute
   ApiPublicMpesaCallbackRoute: typeof ApiPublicMpesaCallbackRoute
 }
@@ -178,6 +191,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/refund-policy': {
+      id: '/refund-policy'
+      path: '/refund-policy'
+      fullPath: '/refund-policy'
+      preLoaderRoute: typeof RefundPolicyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/match/$matchId': {
       id: '/match/$matchId'
       path: '/match/$matchId'
@@ -202,6 +222,7 @@ const rootRouteChildren: RootRouteChildren = {
   PerformanceRoute: PerformanceRoute,
   PrivacyPolicyRoute: PrivacyPolicyRoute,
   ProRoute: ProRoute,
+  RefundPolicyRoute: RefundPolicyRoute,
   MatchMatchIdRoute: MatchMatchIdRoute,
   ApiPublicMpesaCallbackRoute: ApiPublicMpesaCallbackRoute,
 }
