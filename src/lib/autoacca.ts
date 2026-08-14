@@ -92,9 +92,19 @@ const TEMPLATES: Template[] = [
   { id: "long", name: "Long shot six", note: "Six legs for a big payout — treat it as a lottery ticket.", legs: 6, min: 0.45, source: "safe", pro: true },
 ];
 
-export function buildAutoAccas(fixtures: FeedFixture[], isPro: boolean, todayOnly = true): AutoAcca[] {
+/** Today's card when there is one, otherwise the next match day on the board. */
+export function accaPool(fixtures: FeedFixture[]): { dayKey: string | null; pool: FeedFixture[] } {
   const today = todayKey();
-  const pool = todayOnly ? fixtures.filter((f) => dayKeyOf(f.utcDate) === today) : fixtures;
+  const todays = fixtures.filter((f) => dayKeyOf(f.utcDate) === today && f.prediction);
+  if (todays.length) return { dayKey: today, pool: todays };
+  const next = fixtures.find((f) => f.prediction && dayKeyOf(f.utcDate) > today);
+  if (!next) return { dayKey: null, pool: [] };
+  const key = dayKeyOf(next.utcDate);
+  return { dayKey: key, pool: fixtures.filter((f) => f.prediction && dayKeyOf(f.utcDate) === key) };
+}
+
+export function buildAutoAccas(fixtures: FeedFixture[], isPro: boolean): AutoAcca[] {
+  const { pool } = accaPool(fixtures);
   const safe = candidateLegs(pool);
   const value = valueLegs(pool);
 
