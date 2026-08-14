@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable/index";
 
 export const Route = createFileRoute("/auth")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -76,16 +75,20 @@ function AuthPage() {
 
   const google = async () => {
     setBusy(true);
-    const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
+    // Supabase redirects the browser to Google and back to `redirectTo`;
+    // there is no "did it redirect" branch to handle here — on success the
+    // page navigates away immediately, so any code after this line only
+    // runs if it failed to *start* the redirect (e.g. misconfiguration).
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}${safeNext(next)}`,
+      },
     });
-    if (result.error) {
+    if (error) {
       toast.error("Google sign-in failed. Try email instead.");
       setBusy(false);
-      return;
     }
-    if (result.redirected) return;
-    void navigate({ to: safeNext(next) });
   };
 
   return (
