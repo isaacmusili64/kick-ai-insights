@@ -92,15 +92,26 @@ const TEMPLATES: Template[] = [
   { id: "long", name: "Long shot six", note: "Six legs for a big payout — treat it as a lottery ticket.", legs: 6, min: 0.45, source: "safe", pro: true },
 ];
 
-/** Today's card when there is one, otherwise the next match day on the board. */
+/**
+ * Upcoming fixtures starting with today, day by day, until there are enough
+ * matches to build a slip from. Thin midweek cards then still produce accas.
+ */
 export function accaPool(fixtures: FeedFixture[]): { dayKey: string | null; pool: FeedFixture[] } {
   const today = todayKey();
-  const todays = fixtures.filter((f) => dayKeyOf(f.utcDate) === today && f.prediction);
-  if (todays.length) return { dayKey: today, pool: todays };
-  const next = fixtures.find((f) => f.prediction && dayKeyOf(f.utcDate) > today);
-  if (!next) return { dayKey: null, pool: [] };
-  const key = dayKeyOf(next.utcDate);
-  return { dayKey: key, pool: fixtures.filter((f) => f.prediction && dayKeyOf(f.utcDate) === key) };
+  const upcoming = fixtures
+    .filter((f) => f.prediction && dayKeyOf(f.utcDate) >= today)
+    .sort((a, b) => a.utcDate.localeCompare(b.utcDate));
+  if (!upcoming.length) return { dayKey: null, pool: [] };
+
+  const pool: FeedFixture[] = [];
+  let day = "";
+  for (const f of upcoming) {
+    const key = dayKeyOf(f.utcDate);
+    if (pool.length >= 6 && key !== day) break;
+    day = key;
+    pool.push(f);
+  }
+  return { dayKey: dayKeyOf(upcoming[0]!.utcDate), pool };
 }
 
 export function buildAutoAccas(fixtures: FeedFixture[], isPro: boolean): AutoAcca[] {
