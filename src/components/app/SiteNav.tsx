@@ -1,19 +1,17 @@
 import { Link } from "@tanstack/react-router";
 import { History, Layers, LineChart, Sparkles } from "lucide-react";
 
-import { useAcca } from "@/lib/acca";
 import { useAuth } from "@/lib/auth";
 import { usePro } from "@/lib/pro";
 
 const LINKS = [
   { to: "/" as const, label: "Predictions", icon: LineChart },
-  { to: "/acca" as const, label: "Smart acca", icon: Layers },
+  { to: "/acca" as const, label: "Today's accas", icon: Layers },
   { to: "/performance" as const, label: "Track record", icon: History },
   { to: "/pro" as const, label: "Go Pro", icon: Sparkles },
 ];
 
 export function SiteNav() {
-  const { selections } = useAcca();
   const { isPro } = usePro();
   const { user, signOut } = useAuth();
 
@@ -42,9 +40,6 @@ export function SiteNav() {
                 className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 {l.label}
-                {l.to === "/acca" && selections.length ? (
-                  <span className="ml-1.5 tabular text-primary">{selections.length}</span>
-                ) : null}
               </Link>
             ))}
             {user ? (
