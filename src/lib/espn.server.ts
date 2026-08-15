@@ -259,14 +259,15 @@ type EspnRoster = {
   }[];
 };
 
+type EspnTeamList = {
+  sports?: { leagues?: { teams?: { team: { id: string; displayName: string; shortDisplayName?: string } }[] }[] }[];
+};
+
 /** Roster-level fallback: non-active players and flagged injuries. */
 async function fetchRosterNews(code: string, teamName: string): Promise<NewsItem[]> {
   const slug = ESPN_LEAGUES[code];
   if (!slug) return [];
-  const teams = await get<{ sports?: { leagues?: { teams?: { team: { id: string; displayName: string; shortDisplayName?: string } }[] }[] }[]>(
-    `${SITE}/${slug}/teams`,
-    6 * 3_600_000,
-  );
+  const teams = await get<EspnTeamList>(`${SITE}/${slug}/teams`, 6 * 3_600_000);
   const list = teams?.sports?.[0]?.leagues?.[0]?.teams ?? [];
   const found = bestMatch(teamName, list, (t) => [t.team.displayName, t.team.shortDisplayName ?? ""]);
   if (!found) return [];
