@@ -450,15 +450,27 @@ export async function fetchAnalysis(matchId: number) {
       }
     : null;
 
-  const [homeHistory, awayHistory, h2h] = await Promise.all([
+  const [homeHistory, awayHistory, h2h, rawNews, live] = await Promise.all([
     fetchTeamHistory(fixture.home.id).catch(() => null),
     fetchTeamHistory(fixture.away.id).catch(() => null),
     fetchHeadToHead(matchId).catch(() => []),
+    fetchFixtureNews(fixture.competitionCode, fixture.home.name, fixture.away.name).catch(() => null),
+    fetchLiveScores(fixture.competitionCode, [fixture]).catch(() => new Map()),
   ]);
+
+  const news: FixtureNews = {
+    home: rawNews?.home ?? { items: [], attackMul: 1, defenceMul: 1, severity: 0, outCount: 0 },
+    away: rawNews?.away ?? { items: [], attackMul: 1, defenceMul: 1, severity: 0, outCount: 0 },
+    available: rawNews?.available ?? false,
+    explanation: "",
+  };
+  news.explanation = teamNewsExplanation(fixture.home.name, fixture.away.name, news.home, news.away);
+
+  const advantage = await homeAdvantageFor(fixture.competitionCode, strength);
 
   // Match-page prediction blends the season table view (venue splits + form)
   // with a recency-weighted read of each side's last dozen games.
-  const [priced] = priceFixtures([fixture], strength);
+  const [priced] = priceFixtures([fixture], strength, advantage);
   let prediction = priced?.prediction ?? null;
 
   const histGames = (homeHistory?.leagueGoalGames ?? 0) + (awayHistory?.leagueGoalGames ?? 0);
@@ -473,9 +485,17 @@ export async function fetchAnalysis(matchId: number) {
     const homeTable = table?.home ? teamModelFromStanding(table.home, leagueAvgGoals, "home") : null;
     const awayTable = table?.away ? teamModelFromStanding(table.away, leagueAvgGoals, "away") : null;
     prediction = predict(
-      homeTable ? blendModels(homeTable, homeRecent, 0.55) : homeRecent,
-      awayTable ? blendModels(awayTable, awayRecent, 0.55) : awayRecent,
+      applyTeamNews(homeTable ? blendModels(homeTable, homeRecent, 0.55) : homeRecent, news.home),
+      applyTeamNews(awayTable ? blendModels(awayTable, awayRecent, 0.55) : awayRecent, news.away),
       leagueAvgGoals,
+      advantage,
+    );
+  } else if (prediction && table?.home && table?.away) {
+    prediction = predict(
+      applyTeamNews(teamModelFromStanding(table.home, leagueAvgGoals, "home"), news.home),
+      applyTeamNews(teamModelFromStanding(table.away, leagueAvgGoals, "away"), news.away),
+      leagueAvgGoals,
+      advantage,
     );
   }
 
@@ -484,6 +504,9 @@ export async function fetchAnalysis(matchId: number) {
     prediction,
     table,
     h2h,
+    news,
+    live: live.get(fixture.id) ?? null,
+    homeAdvantage: advantage,
     history: {
       home: homeHistory?.matches.slice(0, 12) ?? [],
       away: awayHistory?.matches.slice(0, 12) ?? [],
