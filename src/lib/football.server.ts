@@ -2,13 +2,18 @@
 
 import { buildTeamModel, predict, type ExtendedPrediction } from "./model";
 import {
+  applyTeamNews,
   blendModels,
+  homeAdvantageFromGoals,
+  homeAdvantageFromStandings,
   leagueAverage,
   teamModelFromStanding,
   type LeagueStrength,
   type StandingRow,
 } from "./strength";
 import type { Fixture, FeedFixture, CompetitionStatus } from "./types";
+import { fetchEspnHomeSplit, fetchFixtureNews, fetchLiveScores } from "./espn.server";
+import { teamNewsExplanation, type FixtureNews } from "./teamnews";
 
 export type { Fixture, FeedFixture, CompetitionStatus } from "./types";
 
@@ -275,9 +280,14 @@ export type Feed = {
   competitions: CompetitionStatus[];
 };
 
-function priceFixtures(fixtures: Fixture[], strength: LeagueStrength | null): FeedFixture[] {
+function priceFixtures(
+  fixtures: Fixture[],
+  strength: LeagueStrength | null,
+  homeAdvantage?: number,
+): FeedFixture[] {
   if (!strength || strength.rows.length === 0) return fixtures.map((f) => ({ ...f, prediction: null }));
   const byId = new Map(strength.rows.map((r) => [r.team.id, r]));
+  const advantage = homeAdvantage ?? homeAdvantageFromStandings(strength.rows);
   return fixtures.map((f) => {
     const home = byId.get(f.home.id);
     const away = byId.get(f.away.id);
@@ -288,10 +298,13 @@ function priceFixtures(fixtures: Fixture[], strength: LeagueStrength | null): Fe
         teamModelFromStanding(home, strength.leagueAvgGoals, "home"),
         teamModelFromStanding(away, strength.leagueAvgGoals, "away"),
         strength.leagueAvgGoals,
+        advantage,
       ),
     };
   });
 }
+
+const FEED_STATUSES = new Set(["SCHEDULED", "TIMED", "IN_PLAY", "PAUSED", "FINISHED"]);
 
 export async function fetchCompetitionFeed(code: string, days = 21) {
   const from = isoDate(new Date());
@@ -301,7 +314,14 @@ export async function fetchCompetitionFeed(code: string, days = 21) {
     600_000,
   );
   const fixtures = matches.matches
-    .filter((m) => m.status === "SCHEDULED" || m.status === "TIMED")
+    .filter((m) => {
+      if (!FEED_STATUSES.has(m.status)) return false;
+      // Keep completed/in-play games only while they are still "today's board".
+      if (m.status === "FINISHED" || m.status === "IN_PLAY" || m.status === "PAUSED") {
+        return Date.now() - new Date(m.utcDate).getTime() < 30 * 3_600_000;
+      }
+      return true;
+    })
     .sort((a, b) => a.utcDate.localeCompare(b.utcDate))
     .slice(0, 60)
     .map(toFixture);
@@ -312,7 +332,24 @@ export async function fetchCompetitionFeed(code: string, days = 21) {
   } catch {
     strength = null;
   }
-  return { fixtures: priceFixtures(fixtures, strength), modelled: Boolean(strength) };
+
+  const priced = priceFixtures(fixtures, strength, await homeAdvantageFor(code, strength));
+  const live = await fetchLiveScores(code, priced).catch(() => new Map());
+  const withLive = priced.map((f) => ({ ...f, live: live.get(f.id) ?? null }));
+  return { fixtures: withLive, modelled: Boolean(strength) };
+}
+
+/**
+ * Home advantage measured from data: recent completed results in the league
+ * (ESPN) blended with the season HOME/AWAY standings splits. Nothing hardcoded
+ * beyond a neutral fallback when neither source has enough games.
+ */
+async function homeAdvantageFor(code: string, strength: LeagueStrength | null): Promise<number> {
+  const fromTable = strength ? homeAdvantageFromStandings(strength.rows) : null;
+  const recent = await fetchEspnHomeSplit(code).catch(() => null);
+  const fromRecent = recent ? homeAdvantageFromGoals(recent.homeGoals, recent.awayGoals, recent.games) : null;
+  if (fromTable !== null && fromRecent !== null) return 0.7 * fromTable + 0.3 * fromRecent;
+  return fromTable ?? fromRecent ?? 1.12;
 }
 
 export async function fetchFeed(codes: string[], days = 21): Promise<Feed> {
@@ -413,15 +450,27 @@ export async function fetchAnalysis(matchId: number) {
       }
     : null;
 
-  const [homeHistory, awayHistory, h2h] = await Promise.all([
+  const [homeHistory, awayHistory, h2h, rawNews, live] = await Promise.all([
     fetchTeamHistory(fixture.home.id).catch(() => null),
     fetchTeamHistory(fixture.away.id).catch(() => null),
     fetchHeadToHead(matchId).catch(() => []),
+    fetchFixtureNews(fixture.competitionCode, fixture.home.name, fixture.away.name).catch(() => null),
+    fetchLiveScores(fixture.competitionCode, [fixture]).catch(() => new Map()),
   ]);
+
+  const news: FixtureNews = {
+    home: rawNews?.home ?? { items: [], attackMul: 1, defenceMul: 1, severity: 0, outCount: 0 },
+    away: rawNews?.away ?? { items: [], attackMul: 1, defenceMul: 1, severity: 0, outCount: 0 },
+    available: rawNews?.available ?? false,
+    explanation: "",
+  };
+  news.explanation = teamNewsExplanation(fixture.home.name, fixture.away.name, news.home, news.away);
+
+  const advantage = await homeAdvantageFor(fixture.competitionCode, strength);
 
   // Match-page prediction blends the season table view (venue splits + form)
   // with a recency-weighted read of each side's last dozen games.
-  const [priced] = priceFixtures([fixture], strength);
+  const [priced] = priceFixtures([fixture], strength, advantage);
   let prediction = priced?.prediction ?? null;
 
   const histGames = (homeHistory?.leagueGoalGames ?? 0) + (awayHistory?.leagueGoalGames ?? 0);
@@ -436,9 +485,17 @@ export async function fetchAnalysis(matchId: number) {
     const homeTable = table?.home ? teamModelFromStanding(table.home, leagueAvgGoals, "home") : null;
     const awayTable = table?.away ? teamModelFromStanding(table.away, leagueAvgGoals, "away") : null;
     prediction = predict(
-      homeTable ? blendModels(homeTable, homeRecent, 0.55) : homeRecent,
-      awayTable ? blendModels(awayTable, awayRecent, 0.55) : awayRecent,
+      applyTeamNews(homeTable ? blendModels(homeTable, homeRecent, 0.55) : homeRecent, news.home),
+      applyTeamNews(awayTable ? blendModels(awayTable, awayRecent, 0.55) : awayRecent, news.away),
       leagueAvgGoals,
+      advantage,
+    );
+  } else if (prediction && table?.home && table?.away) {
+    prediction = predict(
+      applyTeamNews(teamModelFromStanding(table.home, leagueAvgGoals, "home"), news.home),
+      applyTeamNews(teamModelFromStanding(table.away, leagueAvgGoals, "away"), news.away),
+      leagueAvgGoals,
+      advantage,
     );
   }
 
@@ -447,6 +504,9 @@ export async function fetchAnalysis(matchId: number) {
     prediction,
     table,
     h2h,
+    news,
+    live: live.get(fixture.id) ?? null,
+    homeAdvantage: advantage,
     history: {
       home: homeHistory?.matches.slice(0, 12) ?? [],
       away: awayHistory?.matches.slice(0, 12) ?? [],

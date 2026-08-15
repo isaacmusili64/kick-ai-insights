@@ -3,6 +3,7 @@ import { ChevronRight, Layers } from "lucide-react";
 
 import { ConfidenceBadge, EdgeBadge } from "./Badges";
 import { Crest } from "./Crest";
+import { LiveScoreline, StatusPill, resolveState } from "./LiveStatus";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { bestEdge, EDGE_THRESHOLD } from "@/lib/edge";
 import { kickoff } from "@/lib/format";
@@ -11,6 +12,11 @@ import type { FeedFixture } from "@/lib/types";
 
 export function FixtureCard({ fixture, market }: { fixture: FeedFixture; market: MarketId }) {
   const p = fixture.prediction;
+  const { state } = resolveState(fixture.status, fixture.utcDate, fixture.live);
+  const goals =
+    fixture.live && fixture.live.homeGoals !== null && fixture.live.awayGoals !== null
+      ? { home: fixture.live.homeGoals, away: fixture.live.awayGoals }
+      : null;
 
   const focus = p ? bestPick(market, p, fixture.home.name, fixture.away.name) : null;
   const chips = p ? headlinePicks(p, fixture.home.name, fixture.away.name) : [];
@@ -23,11 +29,14 @@ export function FixtureCard({ fixture, market }: { fixture: FeedFixture; market:
         params={{ matchId: String(fixture.id) }}
         className="block p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-          <div className="flex min-w-0 items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-            <span className="tabular font-semibold text-foreground">{kickoff(fixture.utcDate)}</span>
-            <span className="truncate">{fixture.competition}</span>
-          </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="tabular text-[11px] font-semibold uppercase tracking-wide text-foreground">
+            {kickoff(fixture.utcDate)}
+          </span>
+          <StatusPill status={fixture.status} utcDate={fixture.utcDate} live={fixture.live} />
+          <span className="min-w-0 flex-1 truncate text-[11px] uppercase tracking-wide text-muted-foreground">
+            {fixture.competition}
+          </span>
           {p ? <ConfidenceBadge confidence={p.confidence} /> : null}
         </div>
 
@@ -38,8 +47,17 @@ export function FixtureCard({ fixture, market }: { fixture: FeedFixture; market:
                 <Crest src={fixture[side].crest} name={fixture[side].name} />
                 <span className="truncate text-sm font-semibold">{fixture[side].name}</span>
               </div>
-              <span className="tabular text-xs text-muted-foreground">
-                {p ? `${(side === "home" ? p.expectedHomeGoals : p.expectedAwayGoals).toFixed(2)} xG` : "—"}
+              <span className="flex items-center gap-2">
+                {goals ? (
+                  <span className="tabular text-base font-bold">
+                    {side === "home" ? goals.home : goals.away}
+                  </span>
+                ) : null}
+                <span className="tabular text-xs text-muted-foreground">
+                  {p
+                    ? `${(side === "home" ? p.expectedHomeGoals : p.expectedAwayGoals).toFixed(2)} xG`
+                    : "—"}
+                </span>
               </span>
             </div>
           ))}
@@ -87,20 +105,23 @@ export function FixtureCard({ fixture, market }: { fixture: FeedFixture; market:
         )}
       </Link>
 
-      <div className="flex items-center justify-between gap-3 border-t border-border bg-surface/60 px-4 py-2">
+      <div className="flex items-center justify-between gap-3 border-t border-border bg-surface/60 px-3 py-2 sm:px-4">
         <Link
           to="/acca"
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
         >
           <Layers className="h-3.5 w-3.5" /> Today&apos;s accas
         </Link>
-        <Link
-          to="/match/$matchId"
-          params={{ matchId: String(fixture.id) }}
-          className="inline-flex items-center gap-1 text-xs font-semibold text-primary"
-        >
-          Full analysis <ChevronRight className="h-3.5 w-3.5" />
-        </Link>
+        <span className="flex items-center gap-2">
+          {state === "live" || state === "finished" ? <LiveScoreline live={fixture.live} /> : null}
+          <Link
+            to="/match/$matchId"
+            params={{ matchId: String(fixture.id) }}
+            className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-semibold text-primary"
+          >
+            Full analysis <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        </span>
       </div>
     </article>
   );

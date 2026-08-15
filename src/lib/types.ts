@@ -1,4 +1,5 @@
 import type { ExtendedPrediction } from "./model";
+import type { LiveScore } from "./live";
 
 export type Fixture = {
   id: number;
@@ -11,7 +12,11 @@ export type Fixture = {
   away: { id: number; name: string; crest: string | null };
 };
 
-export type FeedFixture = Fixture & { prediction: ExtendedPrediction | null };
+export type FeedFixture = Fixture & {
+  prediction: ExtendedPrediction | null;
+  /** Live score / match state from the live provider, when available. */
+  live?: LiveScore | null;
+};
 
 export type TeamResult = {
   goalsFor: number;

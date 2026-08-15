@@ -7,6 +7,7 @@ import { useState } from "react";
 import { ConfidenceBadge, EdgeBadge, ProBadge } from "@/components/app/Badges";
 import { Crest } from "@/components/app/Crest";
 import { FormPips } from "@/components/app/FormPips";
+import { LiveScoreline, StatusPill } from "@/components/app/LiveStatus";
 import { ProbabilityBar } from "@/components/app/ProbabilityBar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -63,6 +64,7 @@ function MatchPage() {
     queryKey: ["analysis", id],
     queryFn: () => analysisFn({ data: { matchId: id } }),
     staleTime: 5 * 60_000,
+    refetchInterval: 60_000,
   });
 
   const insight = useMutation({
@@ -109,6 +111,8 @@ function MatchPage() {
       ? `Table: ${fixture.home.name} P${data.table.home.position} ${data.table.home.points}pts (${data.table.home.goalsFor}:${data.table.home.goalsAgainst}); ${fixture.away.name} P${data.table.away?.position ?? "?"} ${data.table.away?.points ?? "?"}pts`
       : "Table: unavailable",
     `Model edge vs market baseline: ${rows.map((r) => `${r.label} ${(r.edge * 100).toFixed(1)}%`).join(", ")}`,
+    `Team news impact: ${data?.news?.explanation ?? "unknown"}`,
+    `Measured home advantage for this league: ${(data?.homeAdvantage ?? 1).toFixed(3)} (1.00 = neutral)`,
   ].join("\n");
 
   return (
@@ -123,6 +127,10 @@ function MatchPage() {
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
               {fixture.competition} · {fixtureDateLine(fixture.utcDate)}
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <StatusPill status={fixture.status} utcDate={fixture.utcDate} live={data?.live} />
+              <LiveScoreline live={data?.live} />
+            </div>
             <h1 className="mt-1 flex flex-wrap items-center gap-2 text-xl font-bold sm:text-2xl">
               <Crest src={fixture.home.crest} name={fixture.home.name} />
               {fixture.home.name}
@@ -143,7 +151,7 @@ function MatchPage() {
             size="lg"
           />
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           {[
             ["Expected goals", `${p.expectedHomeGoals.toFixed(2)} – ${p.expectedAwayGoals.toFixed(2)}`],
             ["Most likely score", p.topScores[0]?.score ?? "—"],
@@ -157,6 +165,52 @@ function MatchPage() {
           ))}
         </div>
       </header>
+
+      <Panel title="Team news impact">
+        <p className="text-sm leading-relaxed">{data?.news?.explanation}</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {(["home", "away"] as const).map((side) => {
+            const news = side === "home" ? data?.news?.home : data?.news?.away;
+            return (
+              <div key={side} className="rounded-xl border border-border bg-surface p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-xs font-bold uppercase tracking-wide">
+                    {fixture[side].name}
+                  </p>
+                  <span className="tabular text-[11px] text-muted-foreground">
+                    {news && news.items.length
+                      ? `${Math.round((1 - news.attackMul) * 100)}% attack · +${Math.round((news.defenceMul - 1) * 100)}% conceded`
+                      : "Full strength"}
+                  </span>
+                </div>
+                <ul className="mt-2 space-y-1 text-xs">
+                  {news?.items.slice(0, 6).map((i) => (
+                    <li key={`${i.player}-${i.availability}`} className="flex justify-between gap-2">
+                      <span className="truncate">
+                        {i.player}
+                        {i.position ? <span className="text-muted-foreground"> · {i.position}</span> : null}
+                      </span>
+                      <span className="shrink-0 font-semibold uppercase text-muted-foreground">
+                        {i.availability}
+                      </span>
+                    </li>
+                  ))}
+                  {!news?.items.length ? (
+                    <li className="text-muted-foreground">No absences reported.</li>
+                  ) : null}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          Availability feeds the model directly: absences are weighted by position and certainty, then
+          applied to each side&apos;s attack and defence before probabilities are calculated.
+          {data?.homeAdvantage
+            ? ` Home advantage for this league is measured at ${((data.homeAdvantage - 1) * 100).toFixed(1)}% above neutral from recent results.`
+            : ""}
+        </p>
+      </Panel>
 
       <Panel title="Markets">
         <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-2">

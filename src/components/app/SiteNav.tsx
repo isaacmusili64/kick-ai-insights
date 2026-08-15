@@ -3,6 +3,7 @@ import { History, Layers, LineChart, Sparkles } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
 import { usePro } from "@/lib/pro";
+import { ThemeToggle } from "./ThemeToggle";
 
 const LINKS = [
   { to: "/" as const, label: "Predictions", icon: LineChart },
@@ -30,7 +31,8 @@ export function SiteNav() {
               </span>
             ) : null}
           </Link>
-          <nav className="hidden items-center gap-1 sm:flex">
+          <nav className="flex items-center gap-1">
+            <div className="hidden items-center gap-1 sm:flex">
             {LINKS.map((l) => (
               <Link
                 key={l.to}
@@ -58,21 +60,39 @@ export function SiteNav() {
                 Sign in
               </Link>
             )}
+            </div>
+            {user ? (
+              <Link
+                to="/pro"
+                className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-foreground sm:hidden"
+              >
+                Account
+              </Link>
+            ) : (
+              <Link
+                to="/auth"
+                search={{ next: undefined }}
+                className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-foreground sm:hidden"
+              >
+                Sign in
+              </Link>
+            )}
+            <ThemeToggle />
           </nav>
         </div>
       </header>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 border-t border-border bg-card/95 backdrop-blur sm:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
         {LINKS.map((l) => (
           <Link
             key={l.to}
             to={l.to}
             activeOptions={{ exact: l.to === "/" }}
             activeProps={{ className: "text-primary" }}
-            className="flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium text-muted-foreground"
+            className="flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[10px] font-medium leading-tight text-muted-foreground"
           >
-            <l.icon className="h-4 w-4" />
-            {l.label}
+            <l.icon className="h-[18px] w-[18px]" />
+            <span className="truncate">{l.label}</span>
           </Link>
         ))}
       </nav>
