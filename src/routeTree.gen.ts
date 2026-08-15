@@ -17,6 +17,7 @@ import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
 import { Route as ProRouteImport } from './routes/pro'
 import { Route as RefundPolicyRouteImport } from './routes/refund-policy'
 import { Route as MatchMatchIdRouteImport } from './routes/match.$matchId'
+import { Route as ApiPublicCronGradeRouteImport } from './routes/api/public/cron/grade'
 import { Route as ApiPublicMpesaCallbackRouteImport } from './routes/api/public/mpesa/callback'
 
 const IndexRoute = IndexRouteImport.update({
@@ -59,6 +60,11 @@ const MatchMatchIdRoute = MatchMatchIdRouteImport.update({
   path: '/match/$matchId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicCronGradeRoute = ApiPublicCronGradeRouteImport.update({
+  id: '/api/public/cron/grade',
+  path: '/api/public/cron/grade',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicMpesaCallbackRoute = ApiPublicMpesaCallbackRouteImport.update({
   id: '/api/public/mpesa/callback',
   path: '/api/public/mpesa/callback',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/pro': typeof ProRoute
   '/refund-policy': typeof RefundPolicyRoute
   '/match/$matchId': typeof MatchMatchIdRoute
+  '/api/public/cron/grade': typeof ApiPublicCronGradeRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/pro': typeof ProRoute
   '/refund-policy': typeof RefundPolicyRoute
   '/match/$matchId': typeof MatchMatchIdRoute
+  '/api/public/cron/grade': typeof ApiPublicCronGradeRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/pro': typeof ProRoute
   '/refund-policy': typeof RefundPolicyRoute
   '/match/$matchId': typeof MatchMatchIdRoute
+  '/api/public/cron/grade': typeof ApiPublicCronGradeRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/pro'
     | '/refund-policy'
     | '/match/$matchId'
+    | '/api/public/cron/grade'
     | '/api/public/mpesa/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/pro'
     | '/refund-policy'
     | '/match/$matchId'
+    | '/api/public/cron/grade'
     | '/api/public/mpesa/callback'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/pro'
     | '/refund-policy'
     | '/match/$matchId'
+    | '/api/public/cron/grade'
     | '/api/public/mpesa/callback'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   ProRoute: typeof ProRoute
   RefundPolicyRoute: typeof RefundPolicyRoute
   MatchMatchIdRoute: typeof MatchMatchIdRoute
+  ApiPublicCronGradeRoute: typeof ApiPublicCronGradeRoute
   ApiPublicMpesaCallbackRoute: typeof ApiPublicMpesaCallbackRoute
 }
 
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MatchMatchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cron/grade': {
+      id: '/api/public/cron/grade'
+      path: '/api/public/cron/grade'
+      fullPath: '/api/public/cron/grade'
+      preLoaderRoute: typeof ApiPublicCronGradeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/mpesa/callback': {
       id: '/api/public/mpesa/callback'
       path: '/api/public/mpesa/callback'
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProRoute: ProRoute,
   RefundPolicyRoute: RefundPolicyRoute,
   MatchMatchIdRoute: MatchMatchIdRoute,
+  ApiPublicCronGradeRoute: ApiPublicCronGradeRoute,
   ApiPublicMpesaCallbackRoute: ApiPublicMpesaCallbackRoute,
 }
 export const routeTree = rootRouteImport
