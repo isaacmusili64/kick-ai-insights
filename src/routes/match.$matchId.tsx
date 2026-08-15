@@ -7,6 +7,7 @@ import { useState } from "react";
 import { ConfidenceBadge, EdgeBadge, ProBadge } from "@/components/app/Badges";
 import { Crest } from "@/components/app/Crest";
 import { FormPips } from "@/components/app/FormPips";
+import { LiveScoreline, StatusPill } from "@/components/app/LiveStatus";
 import { ProbabilityBar } from "@/components/app/ProbabilityBar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -63,6 +64,7 @@ function MatchPage() {
     queryKey: ["analysis", id],
     queryFn: () => analysisFn({ data: { matchId: id } }),
     staleTime: 5 * 60_000,
+    refetchInterval: 60_000,
   });
 
   const insight = useMutation({
@@ -123,6 +125,10 @@ function MatchPage() {
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
               {fixture.competition} · {fixtureDateLine(fixture.utcDate)}
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <StatusPill status={fixture.status} utcDate={fixture.utcDate} live={data?.live} />
+              <LiveScoreline live={data?.live} />
+            </div>
             <h1 className="mt-1 flex flex-wrap items-center gap-2 text-xl font-bold sm:text-2xl">
               <Crest src={fixture.home.crest} name={fixture.home.name} />
               {fixture.home.name}
@@ -143,7 +149,7 @@ function MatchPage() {
             size="lg"
           />
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           {[
             ["Expected goals", `${p.expectedHomeGoals.toFixed(2)} – ${p.expectedAwayGoals.toFixed(2)}`],
             ["Most likely score", p.topScores[0]?.score ?? "—"],
