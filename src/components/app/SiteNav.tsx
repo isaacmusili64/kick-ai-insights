@@ -61,13 +61,22 @@ export function SiteNav() {
               </Link>
             )}
             </div>
-            <Link
-              to={user ? "/pro" : "/auth"}
-              search={user ? undefined : ({ next: undefined } as never)}
-              className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-foreground sm:hidden"
-            >
-              {user ? "Account" : "Sign in"}
-            </Link>
+            {user ? (
+              <Link
+                to="/pro"
+                className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-foreground sm:hidden"
+              >
+                Account
+              </Link>
+            ) : (
+              <Link
+                to="/auth"
+                search={{ next: undefined }}
+                className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-foreground sm:hidden"
+              >
+                Sign in
+              </Link>
+            )}
             <ThemeToggle />
           </nav>
         </div>
