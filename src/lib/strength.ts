@@ -1,4 +1,5 @@
 import type { TeamModel } from "./model";
+import type { TeamNews } from "./teamnews";
 
 export type VenueSplit = {
   playedGames: number;
@@ -119,4 +120,49 @@ export function leagueAverage(rows: StandingRow[]): number {
   const games = rows.reduce((a, r) => a + r.playedGames, 0);
   const goals = rows.reduce((a, r) => a + r.goalsFor, 0);
   return games ? goals / games : 1.35;
+}
+
+/**
+ * Measures the home-field effect from data instead of assuming it.
+ *
+ * The engine scales home goals by `h` and away goals by `2 - h`, so for an
+ * observed home:away goal ratio `r` the consistent value is `h = 2r / (1 + r)`.
+ * Falls back to the league-neutral 1.0 when there is nothing to measure, and is
+ * clamped so a small sample can't produce an extreme edge.
+ */
+export function homeAdvantageFromGoals(homeGoals: number, awayGoals: number, games: number): number {
+  if (games < 6 || homeGoals + awayGoals === 0) return 1.12;
+  const ratio = (homeGoals + 1) / (awayGoals + 1);
+  const raw = (2 * ratio) / (1 + ratio);
+  // Shrink toward neutral for small samples.
+  const trust = Math.min(1, games / 40);
+  const shrunk = 1 + (raw - 1) * trust;
+  return Math.max(0.95, Math.min(1.3, shrunk));
+}
+
+/** Home advantage implied by a league's HOME/AWAY standings splits. */
+export function homeAdvantageFromStandings(rows: StandingRow[]): number {
+  let homeGoals = 0;
+  let awayGoals = 0;
+  let games = 0;
+  for (const r of rows) {
+    if (r.home && r.home.playedGames > 0) {
+      homeGoals += r.home.goalsFor;
+      awayGoals += r.home.goalsAgainst;
+      games += r.home.playedGames;
+    }
+  }
+  return homeAdvantageFromGoals(homeGoals, awayGoals, games);
+}
+
+/** Applies availability (injury/suspension) multipliers to a team model. */
+export function applyTeamNews(model: TeamModel, news: TeamNews | null | undefined): TeamModel {
+  if (!news || news.items.length === 0) return model;
+  return {
+    ...model,
+    attack: Math.max(0.3, model.attack * news.attackMul),
+    defence: Math.max(0.3, model.defence * news.defenceMul),
+    avgScored: model.avgScored * news.attackMul,
+    avgConceded: model.avgConceded * news.defenceMul,
+  };
 }
