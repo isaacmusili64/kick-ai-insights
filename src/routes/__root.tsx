@@ -15,6 +15,7 @@ import { SiteNav, SiteFooter } from "../components/app/SiteNav";
 import { AccaProvider } from "../lib/acca";
 import { ProProvider } from "../lib/pro";
 import { AuthProvider } from "../lib/auth";
+import { ThemeProvider, themeBootstrapScript } from "../lib/theme";
 import { Toaster } from "../components/ui/sonner";
 
 function NotFoundComponent() {
@@ -124,6 +125,7 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
         <HeadContent />
       </head>
       <body className="bg-background text-foreground">
@@ -139,17 +141,19 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <ProProvider>
-          <AccaProvider>
-            <SiteNav />
-            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-            <Outlet />
-            <SiteFooter />
-            <Toaster />
-          </AccaProvider>
-        </ProProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <ProProvider>
+            <AccaProvider>
+              <SiteNav />
+              {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+              <Outlet />
+              <SiteFooter />
+              <Toaster />
+            </AccaProvider>
+          </ProProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }
