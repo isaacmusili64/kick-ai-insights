@@ -7,6 +7,7 @@
 
 import type { LiveScore, MatchState } from "./live";
 import { buildTeamNews, EMPTY_NEWS, type Availability, type NewsItem, type TeamNews } from "./teamnews";
+import type { TeamMatch } from "./model";
 
 /** football-data competition code -> ESPN league slug. */
 export const ESPN_LEAGUES: Record<string, string> = {
@@ -132,10 +133,10 @@ function ymd(date: Date) {
 }
 
 /** All ESPN events for a league on the given UTC day (defaults to today). */
-export async function fetchEspnScoreboard(code: string, date = new Date()): Promise<EspnMatch[]> {
+export async function fetchEspnScoreboard(code: string, date = new Date(), ttlMs = 25_000): Promise<EspnMatch[]> {
   const slug = ESPN_LEAGUES[code];
   if (!slug) return [];
-  const data = await get<{ events?: EspnEvent[] }>(`${SITE}/${slug}/scoreboard?dates=${ymd(date)}`, 25_000);
+  const data = await get<{ events?: EspnEvent[] }>(`${SITE}/${slug}/scoreboard?dates=${ymd(date)}`, ttlMs);
   const events = data?.events ?? [];
   return events.flatMap((e) => {
     const comps = e.competitions?.[0]?.competitors ?? [];
@@ -317,6 +318,23 @@ export async function fetchFixtureNews(
   return { home, away, available: Boolean(league) || homeItems.length + awayItems.length > 0 };
 }
 
+/**
+ * Team news for many teams in one shot, using only the league-wide injuries
+ * feed (no per-team roster fallback) so it stays cheap enough to call for an
+ * entire board of fixtures rather than one match at a time.
+ */
+export async function fetchLeagueNewsFor(code: string, teamNames: string[]): Promise<Map<string, TeamNews>> {
+  const out = new Map<string, TeamNews>();
+  if (teamNames.length === 0) return out;
+  const league = await fetchLeagueNews(code);
+  if (!league) return out;
+  for (const name of teamNames) {
+    const team = bestMatch(name, league.teams, (t) => [t.name]);
+    if (team && team.items.length) out.set(name, buildTeamNews(team.items));
+  }
+  return out;
+}
+
 /* --------------------------- league-wide scoring -------------------------- */
 
 export type EspnLeagueForm = { homeGoals: number; awayGoals: number; games: number };
@@ -341,4 +359,85 @@ export async function fetchEspnHomeSplit(code: string, days = 28): Promise<EspnL
     games += 1;
   }
   return games >= 6 ? { homeGoals, awayGoals, games } : null;
+}
+
+/**
+ * Recent match history per team, built from ESPN's scoreboard. Shaped like
+ * football-data's per-team history (`TeamMatch[]`) so it can feed the same
+ * `buildTeamModel`/`blendModels` pipeline `fetchAnalysis` already uses — but
+ * sourced independently, so pricing the whole board doesn't need one
+ * football-data call per team (which would blow the free-tier rate limit).
+ */
+export async function fetchEspnRecentForm(
+  code: string,
+  teamNames: string[],
+  days = 35,
+): Promise<Map<string, TeamMatch[]>> {
+  const out = new Map<string, TeamMatch[]>();
+  const slug = ESPN_LEAGUES[code];
+  if (!slug || teamNames.length === 0) return out;
+
+  const dates: Date[] = [];
+  for (let i = 1; i <= days; i += 3) dates.push(new Date(Date.now() - i * 86_400_000));
+  // Finished results don't change, so these can be cached far longer than a
+  // live scoreboard fetch.
+  const boards = await Promise.all(dates.map((d) => fetchEspnScoreboard(code, d, 6 * 3_600_000)));
+  const finished = boards
+    .flat()
+    .filter((e) => e.live.state === "finished" && e.live.homeGoals !== null && e.live.awayGoals !== null)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  for (const name of teamNames) {
+    const matches: TeamMatch[] = [];
+    for (const e of finished) {
+      const isHome = similarity(name, e.home) >= 0.5;
+      const isAway = !isHome && similarity(name, e.away) >= 0.5;
+      if (!isHome && !isAway) continue;
+      const goalsFor = (isHome ? e.live.homeGoals : e.live.awayGoals) ?? 0;
+      const goalsAgainst = (isHome ? e.live.awayGoals : e.live.homeGoals) ?? 0;
+      matches.push({
+        goalsFor,
+        goalsAgainst,
+        isHome,
+        opponent: isHome ? e.away : e.home,
+        date: e.date,
+        result: goalsFor > goalsAgainst ? "W" : goalsFor === goalsAgainst ? "D" : "L",
+      });
+      if (matches.length >= 12) break;
+    }
+    if (matches.length) out.set(name, matches);
+  }
+  return out;
+}
+
+/**
+ * Finished-match result for a single fixture, matched by team name and
+ * kickoff day. Used as a fallback result source when football-data can't be
+ * reached (rate limited, key issue, or the fixture id isn't resolving yet)
+ * so the grading job doesn't stall on it.
+ */
+export async function fetchEspnResult(
+  code: string,
+  homeName: string,
+  awayName: string,
+  kickoffIso: string,
+): Promise<{ homeGoals: number; awayGoals: number } | null> {
+  const slug = ESPN_LEAGUES[code];
+  if (!slug) return null;
+  const kickoff = new Date(kickoffIso);
+  if (Number.isNaN(kickoff.getTime())) return null;
+
+  // The event could land on the UTC day before/after kickoff depending on
+  // kickoff time and ESPN's date bucketing, so check a small window.
+  const days = [kickoff, new Date(kickoff.getTime() - 86_400_000), new Date(kickoff.getTime() + 86_400_000)];
+  const boards = await Promise.all(days.map((d) => fetchEspnScoreboard(code, d, 6 * 3_600_000)));
+  const events = boards.flat();
+
+  const sameDay = events.filter((e) => Math.abs(new Date(e.date).getTime() - kickoff.getTime()) < 8 * 3_600_000);
+  const home = bestMatch(homeName, sameDay, (e) => [e.home]);
+  const match = home && similarity(awayName, home.away) >= 0.4 ? home : null;
+  if (!match || match.live.state !== "finished" || match.live.homeGoals === null || match.live.awayGoals === null) {
+    return null;
+  }
+  return { homeGoals: match.live.homeGoals, awayGoals: match.live.awayGoals };
 }

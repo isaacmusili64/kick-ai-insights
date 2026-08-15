@@ -4,6 +4,7 @@
  */
 
 import { FREE_COMPETITIONS, COMPETITIONS, fetchCompetitionFeed, fetchResults } from "./football.server";
+import { fetchEspnResult } from "./espn.server";
 
 type LoggedPick = {
   fixture_id: number;
@@ -111,7 +112,7 @@ export async function runDailyGrading(codes?: string[]): Promise<GradingReport> 
   const cutoff = new Date(Date.now() - 150 * 60_000).toISOString();
   const { data: pending } = await supabaseAdmin
     .from("prediction_log")
-    .select("id, fixture_id, market, pick")
+    .select("id, fixture_id, market, pick, competition_code, home_team, away_team, kickoff")
     .eq("status", "pending")
     .lt("kickoff", cutoff)
     .limit(60);
@@ -119,8 +120,37 @@ export async function runDailyGrading(codes?: string[]): Promise<GradingReport> 
   let graded = 0;
   const pendingRows = pending ?? [];
   if (pendingRows.length) {
-    const results = await fetchResults([...new Set(pendingRows.map((r) => r.fixture_id))]);
+    const ids = [...new Set(pendingRows.map((r) => r.fixture_id))];
+    const results = await fetchResults(ids).catch((error) => {
+      errors.push(`football-data results: ${(error as Error).message}`);
+      return [];
+    });
     const byId = new Map(results.map((r) => [r.id, r]));
+
+    // ESPN fallback for fixtures football-data couldn't resolve (rate limit,
+    // key issue, more than 20 pending, or not finished there yet), matched
+    // by team name and kickoff day. Best effort: a miss just stays pending
+    // and is retried on the next run.
+    const unresolved = [...new Map(pendingRows.map((r) => [r.fixture_id, r])).values()].filter((r) => {
+      const found = byId.get(r.fixture_id);
+      return !found || found.status !== "FINISHED" || found.homeGoals < 0;
+    });
+    if (unresolved.length) {
+      const espnResults = await Promise.all(
+        unresolved.map(async (r) => {
+          const result = await fetchEspnResult(r.competition_code, r.home_team, r.away_team, r.kickoff).catch(
+            () => null,
+          );
+          return result ? ([r.fixture_id, result] as const) : null;
+        }),
+      );
+      for (const entry of espnResults) {
+        if (!entry) continue;
+        const [fixtureId, result] = entry;
+        byId.set(fixtureId, { id: fixtureId, status: "FINISHED", ...result });
+      }
+    }
+
     for (const row of pendingRows) {
       const result = byId.get(row.fixture_id);
       if (!result || result.status !== "FINISHED" || result.homeGoals < 0) continue;

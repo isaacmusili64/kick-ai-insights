@@ -1,6 +1,6 @@
 /** football-data.org API access + response shaping. Server only. */
 
-import { buildTeamModel, predict, type ExtendedPrediction } from "./model";
+import { buildTeamModel, predict, type ExtendedPrediction, type TeamMatch } from "./model";
 import {
   applyTeamNews,
   blendModels,
@@ -12,8 +12,14 @@ import {
   type StandingRow,
 } from "./strength";
 import type { Fixture, FeedFixture, CompetitionStatus } from "./types";
-import { fetchEspnHomeSplit, fetchFixtureNews, fetchLiveScores } from "./espn.server";
-import { teamNewsExplanation, type FixtureNews } from "./teamnews";
+import {
+  fetchEspnHomeSplit,
+  fetchEspnRecentForm,
+  fetchFixtureNews,
+  fetchLeagueNewsFor,
+  fetchLiveScores,
+} from "./espn.server";
+import { teamNewsExplanation, type FixtureNews, type TeamNews } from "./teamnews";
 
 export type { Fixture, FeedFixture, CompetitionStatus } from "./types";
 
@@ -280,26 +286,47 @@ export type Feed = {
   competitions: CompetitionStatus[];
 };
 
+type PriceExtras = {
+  /** ESPN team news, keyed by the standings-table team name. */
+  newsByTeam?: Map<string, TeamNews>;
+  /** ESPN-sourced recent match history, keyed by the standings-table team name. */
+  recentByTeam?: Map<string, TeamMatch[]>;
+};
+
 function priceFixtures(
   fixtures: Fixture[],
   strength: LeagueStrength | null,
   homeAdvantage?: number,
+  extras?: PriceExtras,
 ): FeedFixture[] {
   if (!strength || strength.rows.length === 0) return fixtures.map((f) => ({ ...f, prediction: null }));
-  const byId = new Map(strength.rows.map((r) => [r.team.id, r]));
-  const advantage = homeAdvantage ?? homeAdvantageFromStandings(strength.rows);
+  const s = strength;
+  const byId = new Map(s.rows.map((r) => [r.team.id, r]));
+  const advantage = homeAdvantage ?? homeAdvantageFromStandings(s.rows);
+  const newsByTeam = extras?.newsByTeam;
+  const recentByTeam = extras?.recentByTeam;
+
+  // Season-table model, optionally sharpened with ESPN's recent-form read
+  // (same blend fetchAnalysis does with football-data's per-team history) and
+  // ESPN's current team news, so the board isn't priced on standings alone.
+  const modelFor = (row: StandingRow, venue: "home" | "away") => {
+    let model = teamModelFromStanding(row, s.leagueAvgGoals, venue);
+    const recent = recentByTeam?.get(row.team.name);
+    if (recent && recent.length >= 3) {
+      model = blendModels(model, buildTeamModel(recent, s.leagueAvgGoals), 0.6);
+    }
+    const news = newsByTeam?.get(row.team.name);
+    if (news) model = applyTeamNews(model, news);
+    return model;
+  };
+
   return fixtures.map((f) => {
     const home = byId.get(f.home.id);
     const away = byId.get(f.away.id);
     if (!home || !away) return { ...f, prediction: null };
     return {
       ...f,
-      prediction: predict(
-        teamModelFromStanding(home, strength.leagueAvgGoals, "home"),
-        teamModelFromStanding(away, strength.leagueAvgGoals, "away"),
-        strength.leagueAvgGoals,
-        advantage,
-      ),
+      prediction: predict(modelFor(home, "home"), modelFor(away, "away"), s.leagueAvgGoals, advantage),
     };
   });
 }
@@ -333,7 +360,22 @@ export async function fetchCompetitionFeed(code: string, days = 21) {
     strength = null;
   }
 
-  const priced = priceFixtures(fixtures, strength, await homeAdvantageFor(code, strength));
+  const advantage = await homeAdvantageFor(code, strength);
+
+  // ESPN-sourced extras that sharpen the board's predictions beyond the
+  // season standings alone. Best effort: an ESPN outage just falls back to
+  // standings-only pricing, same as before this was added.
+  let extras: PriceExtras = {};
+  if (strength) {
+    const teamNames = [...new Set(strength.rows.map((r) => r.team.name))];
+    const [newsByTeam, recentByTeam] = await Promise.all([
+      fetchLeagueNewsFor(code, teamNames).catch(() => new Map<string, TeamNews>()),
+      fetchEspnRecentForm(code, teamNames).catch(() => new Map<string, TeamMatch[]>()),
+    ]);
+    extras = { newsByTeam, recentByTeam };
+  }
+
+  const priced = priceFixtures(fixtures, strength, advantage, extras);
   const live = await fetchLiveScores(code, priced).catch(() => new Map());
   const withLive = priced.map((f) => ({ ...f, live: live.get(f.id) ?? null }));
   return { fixtures: withLive, modelled: Boolean(strength) };
