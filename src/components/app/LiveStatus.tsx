@@ -3,7 +3,7 @@ import { stateFromFixture, stateLabel, type LiveScore, type MatchState } from "@
 export function resolveState(
   status: string,
   utcDate: string,
-  live?: LiveScore | null,
+  live?: LiveScore | null | undefined,
 ): { state: MatchState; detail: string | null } {
   if (live && live.state !== "scheduled") return { state: live.state, detail: live.detail };
   return { state: stateFromFixture(status, utcDate), detail: live?.detail ?? null };
@@ -25,7 +25,7 @@ export function StatusPill({
 }: {
   status: string;
   utcDate: string;
-  live?: LiveScore | null;
+  live?: LiveScore | null | undefined;
   className?: string;
 }) {
   const { state, detail } = resolveState(status, utcDate, live);
@@ -50,7 +50,7 @@ export function LiveScoreline({
   live,
   className = "",
 }: {
-  live?: LiveScore | null;
+  live?: LiveScore | null | undefined;
   className?: string;
 }) {
   if (!live || live.homeGoals === null || live.awayGoals === null) return null;
