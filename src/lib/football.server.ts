@@ -284,7 +284,13 @@ async function fetchSeasonStandings(code: string, season?: number): Promise<Leag
       away: venueRow("AWAY", r.team.id),
       form: parseForm(r.form),
     }));
-  return { rows, leagueAvgGoals: leagueAverage(rows) };
+  const startDate = data.season?.startDate;
+  const startYear = startDate ? Number(startDate.slice(0, 4)) : null;
+  return {
+    rows,
+    leagueAvgGoals: leagueAverage(rows),
+    startYear: Number.isFinite(startYear) ? startYear : null,
+  };
 }
 
 /**
