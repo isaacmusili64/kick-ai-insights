@@ -7,6 +7,7 @@ import {
   homeAdvantageFromGoals,
   homeAdvantageFromStandings,
   leagueAverage,
+  mergeSeasons,
   teamModelFromStanding,
   type LeagueStrength,
   type StandingRow,
@@ -238,8 +239,13 @@ function parseForm(form?: string | null): ("W" | "D" | "L")[] {
     .reverse();
 }
 
-export async function fetchLeagueStrength(code: string): Promise<LeagueStrength> {
-  const data = await api<ApiStandings>(`/competitions/${code}/standings`, 1_800_000);
+type ApiStandingsResponse = ApiStandings & { season?: { startDate?: string } };
+
+async function fetchSeasonStandings(code: string, season?: number): Promise<LeagueStrength & { startYear: number | null }> {
+  const data = await api<ApiStandingsResponse>(
+    `/competitions/${code}/standings${season ? `?season=${season}` : ""}`,
+    1_800_000,
+  );
   const venueRow = (type: "HOME" | "AWAY", teamId: number) => {
     const t = data.standings
       .filter((s) => s.type === type)
@@ -279,6 +285,30 @@ export async function fetchLeagueStrength(code: string): Promise<LeagueStrength>
       form: parseForm(r.form),
     }));
   return { rows, leagueAvgGoals: leagueAverage(rows) };
+}
+
+/**
+ * League strength for pricing. When the current season is too young for the
+ * table to say anything (every team on ~0 games), last season's table is
+ * blended in so teams are actually differentiated.
+ */
+export async function fetchLeagueStrength(code: string): Promise<LeagueStrength> {
+  const current = await fetchSeasonStandings(code);
+  const avgPlayed = current.rows.length
+    ? current.rows.reduce((a, r) => a + r.playedGames, 0) / current.rows.length
+    : 0;
+  if (avgPlayed >= 12) return { rows: current.rows, leagueAvgGoals: current.leagueAvgGoals };
+
+  const startYear = current.startYear ?? new Date().getUTCFullYear();
+  try {
+    const previous = await fetchSeasonStandings(code, startYear - 1);
+    if (previous.rows.length) {
+      return mergeSeasons({ rows: current.rows, leagueAvgGoals: current.leagueAvgGoals }, previous);
+    }
+  } catch {
+    /* previous season unavailable (restricted or cup format) — keep current */
+  }
+  return { rows: current.rows, leagueAvgGoals: current.leagueAvgGoals };
 }
 
 export type Feed = {
