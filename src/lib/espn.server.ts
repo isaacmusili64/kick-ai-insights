@@ -386,22 +386,26 @@ export type EspnLeagueForm = { homeGoals: number; awayGoals: number; games: numb
  * Recent completed results across the league, used to measure the real
  * home-field effect instead of assuming one.
  */
-export async function fetchEspnHomeSplit(code: string, days = 28): Promise<EspnLeagueForm | null> {
+export async function fetchEspnHomeSplit(code: string, days = 60): Promise<EspnLeagueForm | null> {
   const slug = ESPN_LEAGUES[code];
   if (!slug) return null;
-  const dates: Date[] = [];
-  for (let i = 1; i <= days; i += 3) dates.push(new Date(Date.now() - i * 86_400_000));
-  const boards = await Promise.all(dates.map((d) => fetchEspnScoreboard(code, d)));
-  let homeGoals = 0;
-  let awayGoals = 0;
-  let games = 0;
-  for (const e of boards.flat()) {
-    if (e.live.state !== "finished" || e.live.homeGoals === null || e.live.awayGoals === null) continue;
-    homeGoals += e.live.homeGoals;
-    awayGoals += e.live.awayGoals;
-    games += 1;
-  }
-  return games >= 6 ? { homeGoals, awayGoals, games } : null;
+  const tally = (events: EspnMatch[]): EspnLeagueForm => {
+    let homeGoals = 0;
+    let awayGoals = 0;
+    let games = 0;
+    for (const e of events) {
+      homeGoals += e.live.homeGoals ?? 0;
+      awayGoals += e.live.awayGoals ?? 0;
+      games += 1;
+    }
+    return { homeGoals, awayGoals, games };
+  };
+
+  let out = tally(await finishedResults(code, days));
+  // Early in a season there aren't enough recent games: reach back into last
+  // season rather than falling back to a neutral assumption.
+  if (out.games < 20) out = tally(await finishedResults(code, 400));
+  return out.games >= 6 ? out : null;
 }
 
 /**
@@ -414,42 +418,45 @@ export async function fetchEspnHomeSplit(code: string, days = 28): Promise<EspnL
 export async function fetchEspnRecentForm(
   code: string,
   teamNames: string[],
-  days = 35,
+  days = 60,
 ): Promise<Map<string, TeamMatch[]>> {
   const out = new Map<string, TeamMatch[]>();
   const slug = ESPN_LEAGUES[code];
   if (!slug || teamNames.length === 0) return out;
 
-  const dates: Date[] = [];
-  for (let i = 1; i <= days; i += 3) dates.push(new Date(Date.now() - i * 86_400_000));
-  // Finished results don't change, so these can be cached far longer than a
-  // live scoreboard fetch.
-  const boards = await Promise.all(dates.map((d) => fetchEspnScoreboard(code, d, 6 * 3_600_000)));
-  const finished = boards
-    .flat()
-    .filter((e) => e.live.state === "finished" && e.live.homeGoals !== null && e.live.awayGoals !== null)
-    .sort((a, b) => b.date.localeCompare(a.date));
-
-  for (const name of teamNames) {
-    const matches: TeamMatch[] = [];
-    for (const e of finished) {
-      const isHome = similarity(name, e.home) >= 0.5;
-      const isAway = !isHome && similarity(name, e.away) >= 0.5;
-      if (!isHome && !isAway) continue;
-      const goalsFor = (isHome ? e.live.homeGoals : e.live.awayGoals) ?? 0;
-      const goalsAgainst = (isHome ? e.live.awayGoals : e.live.homeGoals) ?? 0;
-      matches.push({
-        goalsFor,
-        goalsAgainst,
-        isHome,
-        opponent: isHome ? e.away : e.home,
-        date: e.date,
-        result: goalsFor > goalsAgainst ? "W" : goalsFor === goalsAgainst ? "D" : "L",
-      });
-      if (matches.length >= 12) break;
+  const build = (finished: EspnMatch[]) => {
+    const map = new Map<string, TeamMatch[]>();
+    for (const name of teamNames) {
+      const matches: TeamMatch[] = [];
+      for (const e of finished) {
+        const isHome = similarity(name, e.home) >= 0.5;
+        const isAway = !isHome && similarity(name, e.away) >= 0.5;
+        if (!isHome && !isAway) continue;
+        const goalsFor = (isHome ? e.live.homeGoals : e.live.awayGoals) ?? 0;
+        const goalsAgainst = (isHome ? e.live.awayGoals : e.live.homeGoals) ?? 0;
+        matches.push({
+          goalsFor,
+          goalsAgainst,
+          isHome,
+          opponent: isHome ? e.away : e.home,
+          date: e.date,
+          result: goalsFor > goalsAgainst ? "W" : goalsFor === goalsAgainst ? "D" : "L",
+        });
+        if (matches.length >= 12) break;
+      }
+      if (matches.length) map.set(name, matches);
     }
-    if (matches.length) out.set(name, matches);
+    return map;
+  };
+
+  let map = build(await finishedResults(code, days));
+  const wellCovered = [...map.values()].filter((m) => m.length >= 6).length;
+  // Not enough current-season games (new season, winter break, cup weeks):
+  // extend the window back through last season so every team has a real read.
+  if (wellCovered < teamNames.length * 0.6) {
+    map = build(await finishedResults(code, 400));
   }
+  for (const [k, v] of map) out.set(k, v);
   return out;
 }
 
