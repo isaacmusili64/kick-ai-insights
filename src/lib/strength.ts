@@ -122,6 +122,72 @@ export function leagueAverage(rows: StandingRow[]): number {
   return games ? goals / games : 1.35;
 }
 
+function scaleSplit(split: VenueSplit | null | undefined, games: number): VenueSplit | null {
+  if (!split || split.playedGames <= 0 || games <= 0) return null;
+  const k = games / split.playedGames;
+  return {
+    playedGames: games,
+    won: split.won * k,
+    draw: split.draw * k,
+    lost: split.lost * k,
+    goalsFor: split.goalsFor * k,
+    goalsAgainst: split.goalsAgainst * k,
+  };
+}
+
+function addSplit(a: VenueSplit | null, b: VenueSplit | null): VenueSplit | null {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    playedGames: a.playedGames + b.playedGames,
+    won: a.won + b.won,
+    draw: a.draw + b.draw,
+    lost: a.lost + b.lost,
+    goalsFor: a.goalsFor + b.goalsFor,
+    goalsAgainst: a.goalsAgainst + b.goalsAgainst,
+  };
+}
+
+/**
+ * Blends last season's table into the current one so early-season fixtures are
+ * priced on real team quality instead of a near-empty table (which collapses
+ * every side toward the league average and makes every match look identical).
+ *
+ * Last season is discounted and capped, and its weight fades away as the
+ * current season accumulates games.
+ */
+export function mergeSeasons(current: LeagueStrength, previous: LeagueStrength): LeagueStrength {
+  const playedNow = current.rows.reduce((a, r) => a + r.playedGames, 0) / Math.max(1, current.rows.length);
+  // Full prior weight before a ball is kicked, none once ~12 games are in.
+  const fade = Math.max(0, 1 - playedNow / 12);
+  if (fade <= 0.01) return current;
+
+  const prevByName = new Map(previous.rows.map((r) => [r.team.name.toLowerCase(), r]));
+  const rows = current.rows.map((row) => {
+    const prev = prevByName.get(row.team.name.toLowerCase());
+    if (!prev || prev.playedGames <= 0) return row;
+
+    const priorGames = Math.min(prev.playedGames, 24) * 0.75 * fade;
+    if (priorGames < 1) return row;
+    const k = priorGames / prev.playedGames;
+
+    return {
+      ...row,
+      playedGames: row.playedGames + priorGames,
+      won: row.won + prev.won * k,
+      draw: row.draw + prev.draw * k,
+      lost: row.lost + prev.lost * k,
+      goalsFor: row.goalsFor + prev.goalsFor * k,
+      goalsAgainst: row.goalsAgainst + prev.goalsAgainst * k,
+      home: addSplit(row.home ?? null, scaleSplit(prev.home, (prev.home?.playedGames ?? 0) * k)),
+      away: addSplit(row.away ?? null, scaleSplit(prev.away, (prev.away?.playedGames ?? 0) * k)),
+      form: row.form && row.form.length ? row.form : prev.form ?? [],
+    } satisfies StandingRow;
+  });
+
+  return { rows, leagueAvgGoals: leagueAverage(rows) };
+}
+
 /**
  * Measures the home-field effect from data instead of assuming it.
  *
