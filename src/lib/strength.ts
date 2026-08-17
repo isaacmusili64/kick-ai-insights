@@ -162,9 +162,10 @@ export function mergeSeasons(current: LeagueStrength, previous: LeagueStrength):
   const fade = Math.max(0, 1 - playedNow / 12);
   if (fade <= 0.01) return current;
 
+  const prevById = new Map(previous.rows.map((r) => [r.team.id, r]));
   const prevByName = new Map(previous.rows.map((r) => [r.team.name.toLowerCase(), r]));
   const rows = current.rows.map((row) => {
-    const prev = prevByName.get(row.team.name.toLowerCase());
+    const prev = prevById.get(row.team.id) ?? prevByName.get(row.team.name.toLowerCase());
     if (!prev || prev.playedGames <= 0) return row;
 
     const priorGames = Math.min(prev.playedGames, 24) * 0.75 * fade;
