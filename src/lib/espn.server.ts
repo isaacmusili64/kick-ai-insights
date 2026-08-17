@@ -132,12 +132,7 @@ function ymd(date: Date) {
   return `${date.getUTCFullYear()}${`${date.getUTCMonth() + 1}`.padStart(2, "0")}${`${date.getUTCDate()}`.padStart(2, "0")}`;
 }
 
-/** All ESPN events for a league on the given UTC day (defaults to today). */
-export async function fetchEspnScoreboard(code: string, date = new Date(), ttlMs = 25_000): Promise<EspnMatch[]> {
-  const slug = ESPN_LEAGUES[code];
-  if (!slug) return [];
-  const data = await get<{ events?: EspnEvent[] }>(`${SITE}/${slug}/scoreboard?dates=${ymd(date)}`, ttlMs);
-  const events = data?.events ?? [];
+function parseEvents(events: EspnEvent[]): EspnMatch[] {
   return events.flatMap((e) => {
     const comps = e.competitions?.[0]?.competitors ?? [];
     const home = comps.find((c) => c.homeAway === "home");
@@ -168,6 +163,54 @@ export async function fetchEspnScoreboard(code: string, date = new Date(), ttlMs
       },
     ];
   });
+}
+
+/** All ESPN events for a league on the given UTC day (defaults to today). */
+export async function fetchEspnScoreboard(code: string, date = new Date(), ttlMs = 25_000): Promise<EspnMatch[]> {
+  const slug = ESPN_LEAGUES[code];
+  if (!slug) return [];
+  const data = await get<{ events?: EspnEvent[] }>(`${SITE}/${slug}/scoreboard?dates=${ymd(date)}`, ttlMs);
+  return parseEvents(data?.events ?? []);
+}
+
+/**
+ * All ESPN events for a league across a date range (inclusive). One request
+ * covers weeks of fixtures, which makes deep history (including last season)
+ * cheap enough to pull when the current season is too young to model.
+ */
+export async function fetchEspnRange(
+  code: string,
+  from: Date,
+  to: Date,
+  ttlMs = 6 * 3_600_000,
+): Promise<EspnMatch[]> {
+  const slug = ESPN_LEAGUES[code];
+  if (!slug) return [];
+  const data = await get<{ events?: EspnEvent[] }>(
+    `${SITE}/${slug}/scoreboard?dates=${ymd(from)}-${ymd(to)}&limit=400`,
+    ttlMs,
+  );
+  return parseEvents(data?.events ?? []);
+}
+
+/** Finished results for a league going back `days`, newest first. */
+async function finishedResults(code: string, days: number): Promise<EspnMatch[]> {
+  const chunks: Promise<EspnMatch[]>[] = [];
+  const now = Date.now();
+  for (let start = 0; start < days; start += 30) {
+    const to = new Date(now - start * 86_400_000);
+    const from = new Date(now - Math.min(days, start + 30) * 86_400_000);
+    chunks.push(fetchEspnRange(code, from, to));
+  }
+  const all = (await Promise.all(chunks)).flat();
+  const seen = new Set<string>();
+  return all
+    .filter((e) => {
+      if (seen.has(e.eventId)) return false;
+      seen.add(e.eventId);
+      return e.live.state === "finished" && e.live.homeGoals !== null && e.live.awayGoals !== null;
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
 }
 
 /** Live state for a set of fixtures, keyed by football-data fixture id. */
