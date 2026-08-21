@@ -130,7 +130,10 @@ export type EspnMatch = {
 };
 
 function ymd(date: Date) {
-  return `\( {date.getUTCFullYear()} \){`\( {date.getUTCMonth() + 1}`.padStart(2, "0")} \){`${date.getUTCDate()}`.padStart(2, "0")}`;
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
 }
 
 function parseEvents(events: EspnEvent[]): EspnMatch[] {
@@ -170,7 +173,7 @@ function parseEvents(events: EspnEvent[]): EspnMatch[] {
 export async function fetchEspnScoreboard(code: string, date = new Date(), ttlMs = 25_000): Promise<EspnMatch[]> {
   const slug = ESPN_LEAGUES[code];
   if (!slug) return [];
-  const data = await get<{ events?: EspnEvent[] }>(`\( {SITE}/ \){slug}/scoreboard?dates=${ymd(date)}`, ttlMs);
+  const data = await get<{ events?: EspnEvent[] }>(`${SITE}/${slug}/scoreboard?dates=${ymd(date)}`, ttlMs);
   return parseEvents(data?.events ?? []);
 }
 
@@ -188,7 +191,7 @@ export async function fetchEspnRange(
   const slug = ESPN_LEAGUES[code];
   if (!slug) return [];
   const data = await get<{ events?: EspnEvent[] }>(
-    `\( {SITE}/ \){slug}/scoreboard?dates=\( {ymd(from)}- \){ymd(to)}&limit=400`,
+    `${SITE}/${slug}/scoreboard?dates=${ymd(from)}-${ymd(to)}&limit=400`,
     ttlMs,
   );
   return parseEvents(data?.events ?? []);
@@ -274,7 +277,7 @@ type LeagueNews = { teams: { name: string; items: NewsItem[] }[] };
 async function fetchLeagueNews(code: string): Promise<LeagueNews | null> {
   const slug = ESPN_LEAGUES[code];
   if (!slug) return null;
-  const data = await get<EspnInjuryFeed>(`\( {SITE}/ \){slug}/injuries`, 1_800_000);
+  const data = await get<EspnInjuryFeed>(`${SITE}/${slug}/injuries`, 1_800_000);
   if (!data?.injuries) return null;
   return {
     teams: data.injuries.map((t) => ({
@@ -312,11 +315,11 @@ type EspnTeamList = {
 async function fetchRosterNews(code: string, teamName: string): Promise<NewsItem[]> {
   const slug = ESPN_LEAGUES[code];
   if (!slug) return [];
-  const teams = await get<EspnTeamList>(`\( {SITE}/ \){slug}/teams`, 6 * 3_600_000);
+  const teams = await get<EspnTeamList>(`${SITE}/${slug}/teams`, 6 * 3_600_000);
   const list = teams?.sports?.[0]?.leagues?.[0]?.teams ?? [];
   const found = bestMatch(teamName, list, (t) => [t.team.displayName, t.team.shortDisplayName ?? ""]);
   if (!found) return [];
-  const roster = await get<EspnRoster>(`\( {SITE}/ \){slug}/teams/${found.team.id}/roster`, 3_600_000);
+  const roster = await get<EspnRoster>(`${SITE}/${slug}/teams/${found.team.id}/roster`, 3_600_000);
   return (roster?.athletes ?? []).flatMap((a) => {
     const injury = a.injuries?.[0];
     const inactive = (a.status?.type ?? "").toLowerCase() !== "active" && a.status?.type !== undefined;
