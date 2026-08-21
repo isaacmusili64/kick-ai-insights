@@ -156,6 +156,67 @@ function addSplit(a: VenueSplit | null, b: VenueSplit | null): VenueSplit | null
  * Last season is discounted and capped, and its weight fades away as the
  * current season accumulates games.
  */
+/** Tokenise team names for fuzzy matching across data sources. */
+function nameTokens(name: string): string[] {
+  const noise = new Set([
+    "fc", "cf", "sc", "ac", "afc", "cd", "ud", "sv", "vfl", "vfb", "tsg", "bsc", "as", "ss", "us",
+    "club", "de", "the", "1", "and", "calcio", "futbol", "football", "sport", "sporting", "team",
+  ]);
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length > 1 && !noise.has(t));
+}
+
+function nameSimilarity(a: string, b: string): number {
+  const ta = nameTokens(a);
+  const tb = nameTokens(b);
+  if (ta.length === 0 || tb.length === 0) return 0;
+  let hits = 0;
+  for (const t of ta) {
+    if (tb.some((u) => u === t || (t.length >= 4 && u.startsWith(t.slice(0, 4))))) hits += 1;
+  }
+  return hits / Math.max(ta.length, tb.length);
+}
+
+function findPreviousRow(row: StandingRow, prevById: Map<number, StandingRow>, previousRows: StandingRow[]): StandingRow | undefined {
+  const byId = prevById.get(row.team.id);
+  if (byId) return byId;
+  // Exact name (case-insensitive)
+  const exact = previousRows.find((r) => r.team.name.toLowerCase() === row.team.name.toLowerCase());
+  if (exact) return exact;
+  // Fuzzy name (handles "Man City" vs "Manchester City", crest short names, etc.)
+  let best: StandingRow | undefined;
+  let bestScore = 0;
+  for (const r of previousRows) {
+    const s = nameSimilarity(row.team.name, r.team.name);
+    if (s > bestScore) {
+      bestScore = s;
+      best = r;
+    }
+  }
+  return bestScore >= 0.45 ? best : undefined;
+}
+
+/**
+ * True when every team still looks identical (early season / failed prior merge).
+ * Used by the fetch path to force a harder fallback.
+ */
+export function isFlatStrength(strength: LeagueStrength): boolean {
+  if (strength.rows.length < 4) return true;
+  const rates = strength.rows.map((r) => {
+    const p = Math.max(1, r.playedGames);
+    return r.goalsFor / p - r.goalsAgainst / p;
+  });
+  const mean = rates.reduce((a, b) => a + b, 0) / rates.length;
+  const variance = rates.reduce((a, b) => a + (b - mean) ** 2, 0) / rates.length;
+  // Near-zero variance => every side priced the same.
+  return variance < 0.04;
+}
+
 export function mergeSeasons(current: LeagueStrength, previous: LeagueStrength): LeagueStrength {
   const playedNow = current.rows.reduce((a, r) => a + r.playedGames, 0) / Math.max(1, current.rows.length);
   // Full prior weight before a ball is kicked, none once ~12 games are in.
@@ -163,12 +224,11 @@ export function mergeSeasons(current: LeagueStrength, previous: LeagueStrength):
   if (fade <= 0.01) return current;
 
   const prevById = new Map(previous.rows.map((r) => [r.team.id, r]));
-  const prevByName = new Map(previous.rows.map((r) => [r.team.name.toLowerCase(), r]));
   const rows = current.rows.map((row) => {
-    const prev = prevById.get(row.team.id) ?? prevByName.get(row.team.name.toLowerCase());
+    const prev = findPreviousRow(row, prevById, previous.rows);
     if (!prev || prev.playedGames <= 0) return row;
 
-    const priorGames = Math.min(prev.playedGames, 24) * 0.75 * fade;
+    const priorGames = Math.min(prev.playedGames, 24) * 0.85 * fade;
     if (priorGames < 1) return row;
     const k = priorGames / prev.playedGames;
 
@@ -232,4 +292,4 @@ export function applyTeamNews(model: TeamModel, news: TeamNews | null | undefine
     avgScored: model.avgScored * news.attackMul,
     avgConceded: model.avgConceded * news.defenceMul,
   };
-}
+    }
