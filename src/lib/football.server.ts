@@ -1,6 +1,6 @@
 /** football-data.org API access + response shaping. Server only. */
 
-import { buildTeamModel, predict, type ExtendedPrediction, type TeamMatch } from "./model";
+import { buildTeamModel, predict, type TeamMatch } from "./model";
 import {
   applyTeamNews,
   blendModels,
@@ -11,6 +11,7 @@ import {
   teamModelFromStanding,
   type LeagueStrength,
   type StandingRow,
+  type VenueSplit,
 } from "./strength";
 import type { Fixture, FeedFixture, CompetitionStatus } from "./types";
 import {
@@ -19,6 +20,7 @@ import {
   fetchFixtureNews,
   fetchLeagueNewsFor,
   fetchLiveScores,
+  finishedResults,
 } from "./espn.server";
 import { teamNewsExplanation, type FixtureNews, type TeamNews } from "./teamnews";
 
@@ -29,17 +31,18 @@ const BASE = "https://api.football-data.org/v4";
 type CacheEntry = { at: number; value: unknown };
 const cache = new Map<string, CacheEntry>();
 
-/** Rolling-window limiter: the free data tier allows 10 requests / minute. */
+/** Rolling-window limiter: free tier allows \~10 requests / minute. Silent waits. */
 const calls: number[] = [];
 async function throttle() {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
     const now = Date.now();
     while (calls.length && now - calls[0]! > 60_000) calls.shift();
-    if (calls.length < 9) {
+    if (calls.length < 8) {
       calls.push(now);
       return;
     }
-    await new Promise((r) => setTimeout(r, 500));
+    // Quiet back-off; never log or throw early so batch jobs stay silent.
+    await new Promise((r) => setTimeout(r, 750 + attempt * 50));
   }
   throw new Error("RATE_LIMITED");
 }
@@ -52,13 +55,22 @@ async function api<T>(path: string, ttlMs = 60_000): Promise<T> {
   if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
 
   await throttle();
-  const res = await fetch(`${BASE}${path}`, { headers: { "X-Auth-Token": token } });
+  const res = await fetch(`\( {BASE} \){path}`, { headers: { "X-Auth-Token": token } });
   if (res.status === 429) throw new Error("RATE_LIMITED");
   if (res.status === 403) throw new Error("RESTRICTED");
   if (!res.ok) throw new Error(`API_ERROR_${res.status}`);
   const json = (await res.json()) as T;
   cache.set(path, { at: Date.now(), value: json });
   return json;
+}
+
+/** Fire-and-forget friendly: returns null on any failure instead of throwing. */
+async function apiSoft<T>(path: string, ttlMs = 60_000): Promise<T | null> {
+  try {
+    return await api<T>(path, ttlMs);
+  } catch {
+    return null;
+  }
 }
 
 export const COMPETITIONS = [
@@ -121,7 +133,7 @@ export async function fetchUpcoming(code: string): Promise<Fixture[]> {
   const from = new Date();
   const to = new Date(Date.now() + 21 * 86_400_000);
   const data = await api<{ matches: ApiMatch[] }>(
-    `/competitions/${code}/matches?dateFrom=${isoDate(from)}&dateTo=${isoDate(to)}`,
+    `/competitions/\( {code}/matches?dateFrom= \){isoDate(from)}&dateTo=${isoDate(to)}`,
     120_000,
   );
   return data.matches
@@ -155,7 +167,7 @@ export async function fetchTeamHistory(teamId: number): Promise<TeamHistory> {
   const from = isoDate(new Date(Date.now() - 260 * 86_400_000));
   const to = isoDate(new Date());
   const data = await api<{ matches: ApiMatch[] }>(
-    `/teams/${teamId}/matches?dateFrom=${from}&dateTo=${to}`,
+    `/teams/\( {teamId}/matches?dateFrom= \){from}&dateTo=${to}`,
     600_000,
   );
   const ordered = [...data.matches]
@@ -202,7 +214,7 @@ export async function fetchHeadToHead(matchId: number) {
         date: m.utcDate,
         home: m.homeTeam.shortName ?? m.homeTeam.name,
         away: m.awayTeam.shortName ?? m.awayTeam.name,
-        score: `${ft.home}-${ft.away}`,
+        score: `\( {ft.home}- \){ft.away}`,
       },
     ];
   });
@@ -243,7 +255,7 @@ type ApiStandingsResponse = ApiStandings & { season?: { startDate?: string } };
 
 async function fetchSeasonStandings(code: string, season?: number): Promise<LeagueStrength & { startYear: number | null }> {
   const data = await api<ApiStandingsResponse>(
-    `/competitions/${code}/standings${season ? `?season=${season}` : ""}`,
+    `/competitions/\( {code}/standings \){season ? `?season=${season}` : ""}`,
     1_800_000,
   );
   const venueRow = (type: "HOME" | "AWAY", teamId: number) => {
@@ -292,11 +304,182 @@ async function fetchSeasonStandings(code: string, season?: number): Promise<Leag
     startYear: Number.isFinite(startYear) ? startYear : null,
   };
 }
+/**
+ * Batched last-season finished matches from football-data.
+ * Splits the previous season into \~90-day windows so we stay under the free-tier
+ * rate limit. All failures are swallowed (soft) so the caller can fall through
+ * to ESPN without noisy errors.
+ */
+async function fetchLastSeasonMatches(code: string, seasonYear: number): Promise<ApiMatch[]> {
+  // Typical European season roughly Aug (seasonYear) → May (seasonYear+1).
+  const windows: [string, string][] = [
+    [`\( {seasonYear}-08-01`, ` \){seasonYear}-10-31`],
+    [`\( {seasonYear}-11-01`, ` \){seasonYear + 1}-01-31`],
+    [`\( {seasonYear + 1}-02-01`, ` \){seasonYear + 1}-04-30`],
+    [`\( {seasonYear + 1}-05-01`, ` \){seasonYear + 1}-07-31`],
+  ];
+
+  const all: ApiMatch[] = [];
+  const seen = new Set<number>();
+
+  for (const [from, to] of windows) {
+    const data = await apiSoft<{ matches: ApiMatch[] }>(
+      `/competitions/\( {code}/matches?dateFrom= \){from}&dateTo=${to}`,
+      3_600_000,
+    );
+    if (!data?.matches) continue;
+    for (const m of data.matches) {
+      if (m.status !== "FINISHED" || seen.has(m.id)) continue;
+      const ft = m.score?.fullTime;
+      if (!ft || ft.home === null || ft.away === null) continue;
+      seen.add(m.id);
+      all.push(m);
+    }
+  }
+  return all;
+}
+
+/** Aggregate finished matches into a LeagueStrength table (TOTAL + HOME/AWAY). */
+function strengthFromMatches(matches: ApiMatch[]): LeagueStrength | null {
+  if (matches.length < 20) return null;
+
+  type Acc = {
+    team: ApiTeam;
+    played: number;
+    won: number;
+    draw: number;
+    lost: number;
+    gf: number;
+    ga: number;
+    home: VenueSplit;
+    away: VenueSplit;
+    form: ("W" | "D" | "L")[];
+  };
+
+  const byId = new Map<number, Acc>();
+
+  const ensure = (t: ApiTeam): Acc => {
+    let a = byId.get(t.id);
+    if (!a) {
+      a = {
+        team: t,
+        played: 0,
+        won: 0,
+        draw: 0,
+        lost: 0,
+        gf: 0,
+        ga: 0,
+        home: { playedGames: 0, won: 0, draw: 0, lost: 0, goalsFor: 0, goalsAgainst: 0 },
+        away: { playedGames: 0, won: 0, draw: 0, lost: 0, goalsFor: 0, goalsAgainst: 0 },
+        form: [],
+      };
+      byId.set(t.id, a);
+    }
+    return a;
+  };
+
+  // Newest first for form strings.
+  const ordered = [...matches].sort((a, b) => b.utcDate.localeCompare(a.utcDate));
+
+  for (const m of ordered) {
+    const ft = m.score!.fullTime!;
+    const hg = ft.home!;
+    const ag = ft.away!;
+
+    const home = ensure(m.homeTeam);
+    const away = ensure(m.awayTeam);
+
+    home.played += 1;
+    away.played += 1;
+    home.gf += hg;
+    home.ga += ag;
+    away.gf += ag;
+    away.ga += hg;
+
+    home.home.playedGames += 1;
+    home.home.goalsFor += hg;
+    home.home.goalsAgainst += ag;
+    away.away.playedGames += 1;
+    away.away.goalsFor += ag;
+    away.away.goalsAgainst += hg;
+
+    if (hg > ag) {
+      home.won += 1;
+      away.lost += 1;
+      home.home.won += 1;
+      away.away.lost += 1;
+      if (home.form.length < 6) home.form.push("W");
+      if (away.form.length < 6) away.form.push("L");
+    } else if (hg < ag) {
+      home.lost += 1;
+      away.won += 1;
+      home.home.lost += 1;
+      away.away.won += 1;
+      if (home.form.length < 6) home.form.push("L");
+      if (away.form.length < 6) away.form.push("W");
+    } else {
+      home.draw += 1;
+      away.draw += 1;
+      home.home.draw += 1;
+      away.away.draw += 1;
+      if (home.form.length < 6) home.form.push("D");
+      if (away.form.length < 6) away.form.push("D");
+    }
+  }
+
+  const rows: StandingRow[] = [...byId.values()]
+    .map((a) => ({
+      position: 0,
+      team: {
+        id: a.team.id,
+        name: a.team.shortName ?? a.team.name,
+        crest: a.team.crest ?? null,
+        tla: a.team.tla ?? null,
+      },
+      playedGames: a.played,
+      won: a.won,
+      draw: a.draw,
+      lost: a.lost,
+      points: a.won * 3 + a.draw,
+      goalsFor: a.gf,
+      goalsAgainst: a.ga,
+      home: a.home.playedGames ? a.home : null,
+      away: a.away.playedGames ? a.away : null,
+      form: a.form,
+    }))
+    .sort((x, y) => y.points - x.points || y.goalsFor - y.goalsAgainst - (x.goalsFor - x.goalsAgainst))
+    .map((r, i) => ({ ...r, position: i + 1 }));
+
+  if (rows.length < 8) return null;
+  return { rows, leagueAvgGoals: leagueAverage(rows) };
+}
+
+/** ESPN finished results → LeagueStrength (name-based ids so merge still works by name). */
+async function strengthFromEspn(code: string): Promise<LeagueStrength | null> {
+  const events = await finishedResults(code, 400).catch(() => []);
+  if (events.length < 20) return null;
+
+  // Re-shape ESPN events into the same ApiMatch-like structure using synthetic ids.
+  const fake: ApiMatch[] = events.map((e, i) => ({
+    id: i + 1,
+    utcDate: e.date,
+    status: "FINISHED",
+    homeTeam: { id: 10_000 + (e.home.length * 17) % 9000, name: e.home, shortName: e.home },
+    awayTeam: { id: 20_000 + (e.away.length * 19) % 9000, name: e.away, shortName: e.away },
+    score: { fullTime: { home: e.live.homeGoals, away: e.live.awayGoals } },
+  }));
+  return strengthFromMatches(fake);
+}
 
 /**
  * League strength for pricing. When the current season is too young for the
- * table to say anything (every team on ~0 games), last season's table is
- * blended in so teams are actually differentiated.
+ * table to say anything (every team on \~0 games), last season data is blended
+ * in so teams are actually differentiated.
+ *
+ * Order of preference:
+ *  1. football-data previous-season standings
+ *  2. football-data last-season finished matches (batched date windows)
+ *  3. ESPN finished results (400-day window)
  */
 export async function fetchLeagueStrength(code: string): Promise<LeagueStrength> {
   const current = await fetchSeasonStandings(code);
@@ -306,14 +489,39 @@ export async function fetchLeagueStrength(code: string): Promise<LeagueStrength>
   if (avgPlayed >= 12) return { rows: current.rows, leagueAvgGoals: current.leagueAvgGoals };
 
   const startYear = current.startYear ?? new Date().getUTCFullYear();
+  const prevYear = startYear - 1;
+
+  // 1) Official previous standings
   try {
-    const previous = await fetchSeasonStandings(code, startYear - 1);
+    const previous = await fetchSeasonStandings(code, prevYear);
     if (previous.rows.length) {
       return mergeSeasons({ rows: current.rows, leagueAvgGoals: current.leagueAvgGoals }, previous);
     }
   } catch {
-    /* previous season unavailable (restricted or cup format) — keep current */
+    /* restricted / unavailable — fall through */
   }
+
+  // 2) football-data last-season matches (silent batch)
+  try {
+    const matches = await fetchLastSeasonMatches(code, prevYear);
+    const fromMatches = strengthFromMatches(matches);
+    if (fromMatches) {
+      return mergeSeasons({ rows: current.rows, leagueAvgGoals: current.leagueAvgGoals }, fromMatches);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 3) ESPN fallback
+  try {
+    const fromEspn = await strengthFromEspn(code);
+    if (fromEspn) {
+      return mergeSeasons({ rows: current.rows, leagueAvgGoals: current.leagueAvgGoals }, fromEspn);
+    }
+  } catch {
+    /* ignore */
+  }
+
   return { rows: current.rows, leagueAvgGoals: current.leagueAvgGoals };
 }
 
@@ -373,7 +581,7 @@ export async function fetchCompetitionFeed(code: string, days = 21) {
   const from = isoDate(new Date());
   const to = isoDate(new Date(Date.now() + days * 86_400_000));
   const matches = await api<{ matches: ApiMatch[] }>(
-    `/competitions/${code}/matches?dateFrom=${from}&dateTo=${to}`,
+    `/competitions/\( {code}/matches?dateFrom= \){from}&dateTo=${to}`,
     600_000,
   );
   const fixtures = matches.matches
@@ -416,7 +624,6 @@ export async function fetchCompetitionFeed(code: string, days = 21) {
   const withLive = priced.map((f) => ({ ...f, live: live.get(f.id) ?? null }));
   return { fixtures: withLive, modelled: Boolean(strength) };
 }
-
 /**
  * Home advantage measured from data: recent completed results in the league
  * (ESPN) blended with the season HOME/AWAY standings splits. Nothing hardcoded
@@ -471,7 +678,7 @@ export async function gradedMatches(code: string, days = 120): Promise<GradedMat
   const from = isoDate(new Date(Date.now() - days * 86_400_000));
   const to = isoDate(new Date());
   const data = await api<{ matches: ApiMatch[] }>(
-    `/competitions/${code}/matches?dateFrom=${from}&dateTo=${to}`,
+    `/competitions/\( {code}/matches?dateFrom= \){from}&dateTo=${to}`,
     1_800_000,
   );
   return data.matches.flatMap((m) => {
