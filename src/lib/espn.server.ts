@@ -85,7 +85,8 @@ function bestMatch<T>(name: string, items: T[], nameOf: (item: T) => string[]): 
       }
     }
   }
-  return score >= 0.5 ? best : null;
+  // Slightly lower threshold so short-name / crest-name mismatches still match.
+  return score >= 0.45 ? best : null;
 }
 
 /* ------------------------------- scoreboard ------------------------------ */
@@ -129,7 +130,7 @@ export type EspnMatch = {
 };
 
 function ymd(date: Date) {
-  return `${date.getUTCFullYear()}${`${date.getUTCMonth() + 1}`.padStart(2, "0")}${`${date.getUTCDate()}`.padStart(2, "0")}`;
+  return `\( {date.getUTCFullYear()} \){`\( {date.getUTCMonth() + 1}`.padStart(2, "0")} \){`${date.getUTCDate()}`.padStart(2, "0")}`;
 }
 
 function parseEvents(events: EspnEvent[]): EspnMatch[] {
@@ -169,7 +170,7 @@ function parseEvents(events: EspnEvent[]): EspnMatch[] {
 export async function fetchEspnScoreboard(code: string, date = new Date(), ttlMs = 25_000): Promise<EspnMatch[]> {
   const slug = ESPN_LEAGUES[code];
   if (!slug) return [];
-  const data = await get<{ events?: EspnEvent[] }>(`${SITE}/${slug}/scoreboard?dates=${ymd(date)}`, ttlMs);
+  const data = await get<{ events?: EspnEvent[] }>(`\( {SITE}/ \){slug}/scoreboard?dates=${ymd(date)}`, ttlMs);
   return parseEvents(data?.events ?? []);
 }
 
@@ -187,14 +188,14 @@ export async function fetchEspnRange(
   const slug = ESPN_LEAGUES[code];
   if (!slug) return [];
   const data = await get<{ events?: EspnEvent[] }>(
-    `${SITE}/${slug}/scoreboard?dates=${ymd(from)}-${ymd(to)}&limit=400`,
+    `\( {SITE}/ \){slug}/scoreboard?dates=\( {ymd(from)}- \){ymd(to)}&limit=400`,
     ttlMs,
   );
   return parseEvents(data?.events ?? []);
 }
 
-/** Finished results for a league going back `days`, newest first. */
-async function finishedResults(code: string, days: number): Promise<EspnMatch[]> {
+/** Finished results for a league going back `days`, newest first. Exported for strength fallback. */
+export async function finishedResults(code: string, days: number): Promise<EspnMatch[]> {
   const chunks: Promise<EspnMatch[]>[] = [];
   const now = Date.now();
   for (let start = 0; start < days; start += 30) {
@@ -273,7 +274,7 @@ type LeagueNews = { teams: { name: string; items: NewsItem[] }[] };
 async function fetchLeagueNews(code: string): Promise<LeagueNews | null> {
   const slug = ESPN_LEAGUES[code];
   if (!slug) return null;
-  const data = await get<EspnInjuryFeed>(`${SITE}/${slug}/injuries`, 1_800_000);
+  const data = await get<EspnInjuryFeed>(`\( {SITE}/ \){slug}/injuries`, 1_800_000);
   if (!data?.injuries) return null;
   return {
     teams: data.injuries.map((t) => ({
@@ -311,11 +312,11 @@ type EspnTeamList = {
 async function fetchRosterNews(code: string, teamName: string): Promise<NewsItem[]> {
   const slug = ESPN_LEAGUES[code];
   if (!slug) return [];
-  const teams = await get<EspnTeamList>(`${SITE}/${slug}/teams`, 6 * 3_600_000);
+  const teams = await get<EspnTeamList>(`\( {SITE}/ \){slug}/teams`, 6 * 3_600_000);
   const list = teams?.sports?.[0]?.leagues?.[0]?.teams ?? [];
   const found = bestMatch(teamName, list, (t) => [t.team.displayName, t.team.shortDisplayName ?? ""]);
   if (!found) return [];
-  const roster = await get<EspnRoster>(`${SITE}/${slug}/teams/${found.team.id}/roster`, 3_600_000);
+  const roster = await get<EspnRoster>(`\( {SITE}/ \){slug}/teams/${found.team.id}/roster`, 3_600_000);
   return (roster?.athletes ?? []).flatMap((a) => {
     const injury = a.injuries?.[0];
     const inactive = (a.status?.type ?? "").toLowerCase() !== "active" && a.status?.type !== undefined;
@@ -429,8 +430,8 @@ export async function fetchEspnRecentForm(
     for (const name of teamNames) {
       const matches: TeamMatch[] = [];
       for (const e of finished) {
-        const isHome = similarity(name, e.home) >= 0.5;
-        const isAway = !isHome && similarity(name, e.away) >= 0.5;
+        const isHome = similarity(name, e.home) >= 0.45;
+        const isAway = !isHome && similarity(name, e.away) >= 0.45;
         if (!isHome && !isAway) continue;
         const goalsFor = (isHome ? e.live.homeGoals : e.live.awayGoals) ?? 0;
         const goalsAgainst = (isHome ? e.live.awayGoals : e.live.homeGoals) ?? 0;
