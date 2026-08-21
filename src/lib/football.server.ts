@@ -6,6 +6,7 @@ import {
   blendModels,
   homeAdvantageFromGoals,
   homeAdvantageFromStandings,
+  isFlatStrength,
   leagueAverage,
   mergeSeasons,
   teamModelFromStanding,
@@ -82,7 +83,7 @@ export const COMPETITIONS = [
   { code: "FL1", name: "Ligue 1", country: "France" },
   { code: "DED", name: "Eredivisie", country: "Netherlands" },
   { code: "PPL", name: "Primeira Liga", country: "Portugal" },
-  { code: "BSA", name: "SÃ©rie A", country: "Brazil" },
+  { code: "BSA", name: "SÃƒÂ©rie A", country: "Brazil" },
   { code: "CL", name: "Champions League", country: "Europe" },
   { code: "EL", name: "Europa League", country: "Europe" },
   { code: "EC", name: "European Championship", country: "Europe" },
@@ -312,7 +313,7 @@ async function fetchSeasonStandings(code: string, season?: number): Promise<Leag
  * to ESPN without noisy errors.
  */
 async function fetchLastSeasonMatches(code: string, seasonYear: number): Promise<ApiMatch[]> {
-  // Typical European season roughly Aug (seasonYear) â†’ May (seasonYear+1).
+  // Typical European season roughly Aug (seasonYear) Ã¢â€ â€™ May (seasonYear+1).
   const windows: [string, string][] = [
     [`${seasonYear}-08-01`, `${seasonYear}-10-31`],
     [`${seasonYear}-11-01`, `${seasonYear + 1}-01-31`],
@@ -455,7 +456,7 @@ function strengthFromMatches(matches: ApiMatch[]): LeagueStrength | null {
   return { rows, leagueAvgGoals: leagueAverage(rows) };
 }
 
-/** ESPN finished results â†’ LeagueStrength (name-based ids so merge still works by name). */
+/** ESPN finished results Ã¢â€ â€™ LeagueStrength (name-based ids so merge still works by name). */
 async function strengthFromEspn(code: string): Promise<LeagueStrength | null> {
   const events = await finishedResults(code, 400).catch(() => []);
   if (events.length < 20) return null;
@@ -484,46 +485,72 @@ async function strengthFromEspn(code: string): Promise<LeagueStrength | null> {
  */
 export async function fetchLeagueStrength(code: string): Promise<LeagueStrength> {
   const current = await fetchSeasonStandings(code);
+  const base: LeagueStrength = { rows: current.rows, leagueAvgGoals: current.leagueAvgGoals };
   const avgPlayed = current.rows.length
     ? current.rows.reduce((a, r) => a + r.playedGames, 0) / current.rows.length
     : 0;
-  if (avgPlayed >= 12) return { rows: current.rows, leagueAvgGoals: current.leagueAvgGoals };
+  // Enough current-season evidence and already differentiated â†’ use as-is.
+  if (avgPlayed >= 12 && !isFlatStrength(base)) return base;
 
   const startYear = current.startYear ?? new Date().getUTCFullYear();
   const prevYear = startYear - 1;
 
-  // 1) Official previous standings
+  let merged: LeagueStrength = base;
+
+  // 1) Official previous standings (often restricted on free tier)
   try {
     const previous = await fetchSeasonStandings(code, prevYear);
     if (previous.rows.length) {
-      return mergeSeasons({ rows: current.rows, leagueAvgGoals: current.leagueAvgGoals }, previous);
+      merged = mergeSeasons(base, previous);
+      if (!isFlatStrength(merged)) return merged;
     }
   } catch {
     /* restricted / unavailable â€” fall through */
   }
 
-  // 2) football-data last-season matches (silent batch)
+  // 2a) football-data last-season matches via season filter (one call)
+  try {
+    const seasonData = await apiSoft<{ matches: ApiMatch[] }>(
+      `/competitions/${code}/matches?season=${prevYear}`,
+      3_600_000,
+    );
+    const finished = (seasonData?.matches ?? []).filter((m) => {
+      const ft = m.score?.fullTime;
+      return m.status === "FINISHED" && ft && ft.home !== null && ft.away !== null;
+    });
+    const fromSeason = strengthFromMatches(finished);
+    if (fromSeason) {
+      merged = mergeSeasons(base, fromSeason);
+      if (!isFlatStrength(merged)) return merged;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 2b) football-data last-season matches (batched date windows)
   try {
     const matches = await fetchLastSeasonMatches(code, prevYear);
     const fromMatches = strengthFromMatches(matches);
     if (fromMatches) {
-      return mergeSeasons({ rows: current.rows, leagueAvgGoals: current.leagueAvgGoals }, fromMatches);
+      merged = mergeSeasons(base, fromMatches);
+      if (!isFlatStrength(merged)) return merged;
     }
   } catch {
     /* ignore */
   }
 
-  // 3) ESPN fallback
+  // 3) ESPN finished results (400-day window) â€” fuzzy name merge handles short names
   try {
     const fromEspn = await strengthFromEspn(code);
     if (fromEspn) {
-      return mergeSeasons({ rows: current.rows, leagueAvgGoals: current.leagueAvgGoals }, fromEspn);
+      merged = mergeSeasons(base, fromEspn);
+      if (!isFlatStrength(merged)) return merged;
     }
   } catch {
     /* ignore */
   }
 
-  return { rows: current.rows, leagueAvgGoals: current.leagueAvgGoals };
+  return merged;
 }
 
 export type Feed = {
@@ -594,209 +621,4 @@ export async function fetchCompetitionFeed(code: string, days = 21) {
       }
       return true;
     })
-    .sort((a, b) => a.utcDate.localeCompare(b.utcDate))
-    .slice(0, 60)
-    .map(toFixture);
-
-  let strength: LeagueStrength | null = null;
-  try {
-    strength = await fetchLeagueStrength(code);
-  } catch {
-    strength = null;
-  }
-
-  const advantage = await homeAdvantageFor(code, strength);
-
-  // ESPN-sourced extras that sharpen the board's predictions beyond the
-  // season standings alone. Best effort: an ESPN outage just falls back to
-  // standings-only pricing, same as before this was added.
-  let extras: PriceExtras = {};
-  if (strength) {
-    const teamNames = [...new Set(strength.rows.map((r) => r.team.name))];
-    const [newsByTeam, recentByTeam] = await Promise.all([
-      fetchLeagueNewsFor(code, teamNames).catch(() => new Map<string, TeamNews>()),
-      fetchEspnRecentForm(code, teamNames).catch(() => new Map<string, TeamMatch[]>()),
-    ]);
-    extras = { newsByTeam, recentByTeam };
-  }
-
-  const priced = priceFixtures(fixtures, strength, advantage, extras);
-  const live = await fetchLiveScores(code, priced).catch(() => new Map());
-  const withLive = priced.map((f) => ({ ...f, live: live.get(f.id) ?? null }));
-  return { fixtures: withLive, modelled: Boolean(strength) };
-}
-
-/**
- * Home advantage measured from data: recent completed results in the league
- * (ESPN) blended with the season HOME/AWAY standings splits. Nothing hardcoded
- * beyond a neutral fallback when neither source has enough games.
- */
-async function homeAdvantageFor(code: string, strength: LeagueStrength | null): Promise<number> {
-  const fromTable = strength ? homeAdvantageFromStandings(strength.rows) : null;
-  const recent = await fetchEspnHomeSplit(code).catch(() => null);
-  const fromRecent = recent ? homeAdvantageFromGoals(recent.homeGoals, recent.awayGoals, recent.games) : null;
-  if (fromTable !== null && fromRecent !== null) return 0.7 * fromTable + 0.3 * fromRecent;
-  return fromTable ?? fromRecent ?? 1.12;
-}
-
-export async function fetchFeed(codes: string[], days = 21): Promise<Feed> {
-  const wanted = codes.slice(0, 13);
-  const fixtures: FeedFixture[] = [];
-  const competitions: CompetitionStatus[] = [];
-  const deadline = Date.now() + 25_000;
-
-  for (const code of wanted) {
-    const name = COMPETITIONS.find((c) => c.code === code)?.name ?? code;
-    if (Date.now() > deadline) {
-      competitions.push({ code, name, error: "RATE_LIMITED", modelled: false });
-      continue;
-    }
-    try {
-      const result = await fetchCompetitionFeed(code, days);
-      fixtures.push(...result.fixtures);
-      competitions.push({ code, name, error: null, modelled: result.modelled });
-    } catch (error) {
-      competitions.push({ code, name, error: (error as Error).message, modelled: false });
-    }
-  }
-
-  fixtures.sort((a, b) => a.utcDate.localeCompare(b.utcDate));
-  return { fixtures, competitions };
-}
-
-export type GradedMatch = {
-  id: number;
-  date: string;
-  homeId: number;
-  awayId: number;
-  homeName: string;
-  awayName: string;
-  homeGoals: number;
-  awayGoals: number;
-};
-
-/** Matches already played in a competition, with final scores, for scoring the model. */
-export async function gradedMatches(code: string, days = 120): Promise<GradedMatch[]> {
-  const from = isoDate(new Date(Date.now() - days * 86_400_000));
-  const to = isoDate(new Date());
-  const data = await api<{ matches: ApiMatch[] }>(
-    `/competitions/${code}/matches?dateFrom=${from}&dateTo=${to}`,
-    1_800_000,
-  );
-  return data.matches.flatMap((m) => {
-    const ft = m.score?.fullTime;
-    if (m.status !== "FINISHED" || !ft || ft.home === null || ft.away === null) return [];
-    return [
-      {
-        id: m.id,
-        date: m.utcDate,
-        homeId: m.homeTeam.id,
-        awayId: m.awayTeam.id,
-        homeName: m.homeTeam.shortName ?? m.homeTeam.name,
-        awayName: m.awayTeam.shortName ?? m.awayTeam.name,
-        homeGoals: ft.home,
-        awayGoals: ft.away,
-      },
-    ];
-  });
-}
-
-/** Final scores for specific match ids (used when grading logged predictions). */
-export async function fetchResults(ids: number[]) {
-  const out: { id: number; homeGoals: number; awayGoals: number; status: string }[] = [];
-  for (const id of ids.slice(0, 20)) {
-    try {
-      const data = await api<ApiMatch>(`/matches/${id}`, 300_000);
-      const ft = data.score?.fullTime;
-      out.push({
-        id,
-        status: data.status,
-        homeGoals: ft?.home ?? -1,
-        awayGoals: ft?.away ?? -1,
-      });
-    } catch {
-      /* skip */
-    }
-  }
-  return out;
-}
-
-export async function fetchAnalysis(matchId: number) {
-  const fixture = await fetchMatch(matchId);
-  let strength: LeagueStrength | null = null;
-  try {
-    strength = fixture.competitionCode ? await fetchLeagueStrength(fixture.competitionCode) : null;
-  } catch {
-    strength = null;
-  }
-  const table = strength
-    ? {
-        home: strength.rows.find((r) => r.team.id === fixture.home.id) ?? null,
-        away: strength.rows.find((r) => r.team.id === fixture.away.id) ?? null,
-        leagueAvgGoals: strength.leagueAvgGoals,
-      }
-    : null;
-
-  const [homeHistory, awayHistory, h2h, rawNews, live] = await Promise.all([
-    fetchTeamHistory(fixture.home.id).catch(() => null),
-    fetchTeamHistory(fixture.away.id).catch(() => null),
-    fetchHeadToHead(matchId).catch(() => []),
-    fetchFixtureNews(fixture.competitionCode, fixture.home.name, fixture.away.name).catch(() => null),
-    fetchLiveScores(fixture.competitionCode, [fixture]).catch(() => new Map()),
-  ]);
-
-  const news: FixtureNews = {
-    home: rawNews?.home ?? { items: [], attackMul: 1, defenceMul: 1, severity: 0, outCount: 0 },
-    away: rawNews?.away ?? { items: [], attackMul: 1, defenceMul: 1, severity: 0, outCount: 0 },
-    available: rawNews?.available ?? false,
-    explanation: "",
-  };
-  news.explanation = teamNewsExplanation(fixture.home.name, fixture.away.name, news.home, news.away);
-
-  const advantage = await homeAdvantageFor(fixture.competitionCode, strength);
-
-  // Match-page prediction blends the season table view (venue splits + form)
-  // with a recency-weighted read of each side's last dozen games.
-  const [priced] = priceFixtures([fixture], strength, advantage);
-  let prediction = priced?.prediction ?? null;
-
-  const histGames = (homeHistory?.leagueGoalGames ?? 0) + (awayHistory?.leagueGoalGames ?? 0);
-  const histAvg = histGames
-    ? ((homeHistory?.leagueGoalSum ?? 0) + (awayHistory?.leagueGoalSum ?? 0)) / histGames / 2
-    : null;
-  const leagueAvgGoals = strength?.leagueAvgGoals ?? histAvg ?? 1.35;
-
-  if (homeHistory?.matches.length && awayHistory?.matches.length) {
-    const homeRecent = buildTeamModel(homeHistory.matches, leagueAvgGoals);
-    const awayRecent = buildTeamModel(awayHistory.matches, leagueAvgGoals);
-    const homeTable = table?.home ? teamModelFromStanding(table.home, leagueAvgGoals, "home") : null;
-    const awayTable = table?.away ? teamModelFromStanding(table.away, leagueAvgGoals, "away") : null;
-    prediction = predict(
-      applyTeamNews(homeTable ? blendModels(homeTable, homeRecent, 0.55) : homeRecent, news.home),
-      applyTeamNews(awayTable ? blendModels(awayTable, awayRecent, 0.55) : awayRecent, news.away),
-      leagueAvgGoals,
-      advantage,
-    );
-  } else if (prediction && table?.home && table?.away) {
-    prediction = predict(
-      applyTeamNews(teamModelFromStanding(table.home, leagueAvgGoals, "home"), news.home),
-      applyTeamNews(teamModelFromStanding(table.away, leagueAvgGoals, "away"), news.away),
-      leagueAvgGoals,
-      advantage,
-    );
-  }
-
-  return {
-    fixture,
-    prediction,
-    table,
-    h2h,
-    news,
-    live: live.get(fixture.id) ?? null,
-    homeAdvantage: advantage,
-    history: {
-      home: homeHistory?.matches.slice(0, 12) ?? [],
-      away: awayHistory?.matches.slice(0, 12) ?? [],
-    },
-  };
-}
+    .sort((a, b) => a.utcDate.localeCompare(b.utcDate)
