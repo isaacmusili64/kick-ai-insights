@@ -37,9 +37,13 @@ export function FixtureFeed({ limit }: { limit?: number }) {
   const codes = filters.codes.length ? filters.codes.slice(0, MAX_FEED_CODES) : [...FREE_CODES];
   const { fixtures, isPending, isLoadingMore, loaded, total } = useCompetitionFeed(codes);
   const filtered = useMemo(() => applyFilters(fixtures, filters), [fixtures, filters]);
-  const dayTabs = useMemo(() => boardDayKeys(), []);
+  const dayTabs = boardDayKeys();
   const groupedAll = useMemo(() => groupByDay(filtered), [filtered]);
-  const byKey = useMemo(() => new Map(groupedAll.map((g) => [g.key, g])), [groupedAll]);
+  const byKey = useMemo(() => {
+    const m = new Map<string, (typeof groupedAll)[number]>();
+    for (const g of groupedAll) m.set(g.key, g);
+    return m;
+  }, [groupedAll]);
   // Home / limited strip: still only a couple of days; full board uses the day tabs.
   const grouped = useMemo(() => {
     if (limit) return groupByDay(filtered).slice(0, 2);
