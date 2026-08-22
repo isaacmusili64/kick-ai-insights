@@ -148,38 +148,62 @@ export const getAiInsight = createServerFn({ method: "POST" })
     const system =
       "You are a football analyst. You receive the output of a Poisson/Dixon-Coles statistical model plus recent form data. Write a sharp, specific analysis in 3 short paragraphs: (1) what the model sees and why, (2) the key form/tactical angle including the strongest market, (3) one clear risk that could break the prediction. Reference the actual numbers. No headings, no bullet points, under 190 words.";
 
-    let res: Response;
-    try {
-      res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`,
-        },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: data.payload },
-          ],
-          temperature: 0.4,
-          max_tokens: 400,
-          stream: false,
-        }),
+    // Llama 3.3 70B was decommissioned on Groq (Aug 2026). Prefer GPT-OSS 120B, then Qwen.
+    const models = ["openai/gpt-oss-120b", "qwen/qwen3.6-27b"] as const;
+
+    const bodyFor = (model: string) =>
+      JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: data.payload },
+        ],
+        temperature: 0.4,
+        max_tokens: 400,
+        stream: false,
       });
-    } catch {
-      return { insight: null, error: "Could not reach the AI service." };
+
+    let lastError = "AI insight failed to generate.";
+
+    for (const model of models) {
+      let res: Response;
+      try {
+        res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+          },
+          body: bodyFor(model),
+        });
+      } catch {
+        lastError = "Could not reach the AI service.";
+        continue;
+      }
+
+      if (res.status === 429) {
+        lastError = "AI is busy right now — try again shortly.";
+        continue;
+      }
+      if (res.status === 401) {
+        return { insight: null, error: "AI is misconfigured — check the API key." };
+      }
+      if (!res.ok) {
+        const errBody = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        lastError = errBody?.error?.message ?? `AI insight failed (${res.status}).`;
+        // Model decommissioned / not found → try next
+        if (res.status === 400 || res.status === 404) continue;
+        continue;
+      }
+
+      const json = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const text = json.choices?.[0]?.message?.content ?? "";
+      const insight = text.trim() || null;
+      if (insight) return { insight, error: null };
+      lastError = "AI returned an empty response.";
     }
 
-    if (res.status === 429) return { insight: null, error: "AI is busy right now — try again shortly." };
-    if (res.status === 401) return { insight: null, error: "AI is misconfigured — check the API key." };
-    if (!res.ok) return { insight: null, error: "AI insight failed to generate." };
-
-    const json = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-
-    const text = json.choices?.[0]?.message?.content ?? "";
-    const insight = text.trim() || null;
-    return { insight, error: insight ? null : "AI returned an empty response." };
+    return { insight: null, error: lastError };
   });
