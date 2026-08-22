@@ -9,7 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { useCompetitionFeed } from "@/hooks/useCompetitionFeed";
 import { ALL_CODES, COMPETITION_LIST, FREE_CODES, MAX_FEED_CODES, competitionName } from "@/lib/competitions";
 import { applyFilters, DEFAULT_FILTERS, SORTS, type FilterState } from "@/lib/filters";
-import { dayLabel, dayLabelShort, groupByDay } from "@/lib/format";
+import { boardDayKeys, dayLabel, dayLabelShort, groupByDay, todayKey } from "@/lib/format";
 import { MARKETS } from "@/lib/markets";
 import { usePro } from "@/lib/pro";
 
@@ -31,15 +31,21 @@ export function FixtureFeed({ limit }: { limit?: number }) {
   const { isPro } = usePro();
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const set = (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch }));
+  // Board opens on Today (Nairobi); user can switch Yesterday / Tomorrow / Day after.
+  const [activeDay, setActiveDay] = useState<string>(() => todayKey());
 
   const codes = filters.codes.length ? filters.codes.slice(0, MAX_FEED_CODES) : [...FREE_CODES];
   const { fixtures, isPending, isLoadingMore, loaded, total } = useCompetitionFeed(codes);
-  const days = useMemo(() => groupByDay(fixtures), [fixtures]);
   const filtered = useMemo(() => applyFilters(fixtures, filters), [fixtures, filters]);
+  const dayTabs = useMemo(() => boardDayKeys(), []);
+  const groupedAll = useMemo(() => groupByDay(filtered), [filtered]);
+  const byKey = useMemo(() => new Map(groupedAll.map((g) => [g.key, g])), [groupedAll]);
+  // Home / limited strip: still only a couple of days; full board uses the day tabs.
   const grouped = useMemo(() => {
-    const g = groupByDay(filtered);
-    return limit ? g.slice(0, 2) : g;
-  }, [filtered, limit]);
+    if (limit) return groupByDay(filtered).slice(0, 2);
+    const g = byKey.get(activeDay);
+    return g ? [g] : [];
+  }, [filtered, limit, activeDay, byKey]);
 
   const competitionValue =
     filters.codes.length > 1 ? "all" : filters.codes.length === 1 ? filters.codes[0]! : "free";
@@ -207,6 +213,30 @@ export function FixtureFeed({ limit }: { limit?: number }) {
         </div>
       )}
 
+      {!limit ? (
+        <div className="flex flex-wrap gap-2">
+          {dayTabs.map((key) => {
+            const count = byKey.get(key)?.fixtures.length ?? 0;
+            const active = key === activeDay;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveDay(key)}
+                className={
+                  active
+                    ? "rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+                    : "rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                }
+              >
+                {dayLabelShort(key)}
+                <span className="ml-1.5 tabular opacity-70">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       {isPending ? (
         <div className="grid gap-3 md:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -215,8 +245,9 @@ export function FixtureFeed({ limit }: { limit?: number }) {
         </div>
       ) : grouped.length === 0 ? (
         <p className="card-surface p-6 text-sm text-muted-foreground">
-          No fixtures match these filters. Loosen the probability or confidence filter, or pick a
-          different date.
+          {limit
+            ? "No fixtures match these filters. Loosen the probability or confidence filter, or pick a different date."
+            : `No fixtures for ${dayLabel(activeDay)} with the current filters. Try another day tab or loosen filters.`}
         </p>
       ) : (
         <>
