@@ -11,7 +11,7 @@ export type Plan = {
 export const PLANS: Plan[] = [
   { id: "daily", name: "Day pass", priceKes: 50, days: 1, blurb: "Every prediction for one match day." },
   { id: "weekly", name: "Week pass", priceKes: 250, days: 7, blurb: "A full week of fixtures, edges and accas." },
-  { id: "monthly", name: "Month pass", priceKes: 1, days: 30, blurb: "Best value — a whole month of predictions." },
+  { id: "monthly", name: "Month pass", priceKes: 750, days: 30, blurb: "Best value — a whole month of predictions." },
 ];
 
 export function planById(id: string): Plan | undefined {
