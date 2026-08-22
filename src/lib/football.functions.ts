@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const FeedInput = z.object({
   codes: z.array(z.string().min(2).max(5)).min(1).max(20),
-  days: z.number().int().min(1).max(30).optional(),
+  days: z.number().int().min(1).max(7).optional(),
 });
 const MatchInput = z.object({ matchId: z.number().int().positive() });
 const CompetitionInput = z.object({ code: z.string().min(2).max(5) });
@@ -19,7 +19,7 @@ export const getFeed = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const { fetchFeed } = await import("./football.server");
     try {
-      const feed = await fetchFeed(data.codes, data.days ?? 21);
+      const feed = await fetchFeed(data.codes, data.days ?? 3);
       return { ...feed, error: null as string | null };
     } catch (error) {
       return { fixtures: [], competitions: [], error: (error as Error).message };
@@ -47,7 +47,7 @@ export const getCompetitionFeed = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const { fetchCompetitionFeed } = await import("./football.server");
     try {
-      const result = await fetchCompetitionFeed(data.code, 21);
+      const result = await fetchCompetitionFeed(data.code, 3);
       return { code: data.code, fixtures: result.fixtures, modelled: result.modelled, error: null as string | null };
     } catch (error) {
       return { code: data.code, fixtures: [], modelled: false, error: (error as Error).message };

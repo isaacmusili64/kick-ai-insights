@@ -31,18 +31,22 @@ const BASE = "https://api.football-data.org/v4";
 type CacheEntry = { at: number; value: unknown };
 const cache = new Map<string, CacheEntry>();
 
-/** Rolling-window limiter: free tier allows ~10 requests / minute. Silent waits. */
+/**
+ * Free tier ≈ 10 req/min. Stay under that with headroom, silent waits, and
+ * 429 retries so multi-league boards still fill instead of failing early.
+ */
 const calls: number[] = [];
+const MAX_PER_MIN = 6;
+
 async function throttle() {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 90; attempt += 1) {
     const now = Date.now();
     while (calls.length && now - calls[0]! > 60_000) calls.shift();
-    if (calls.length < 8) {
+    if (calls.length < MAX_PER_MIN) {
       calls.push(now);
       return;
     }
-    // Quiet back-off; never log or throw early so batch jobs stay silent.
-    await new Promise((r) => setTimeout(r, 750 + attempt * 50));
+    await new Promise((r) => setTimeout(r, 1_000 + attempt * 150));
   }
   throw new Error("RATE_LIMITED");
 }
@@ -54,14 +58,23 @@ async function api<T>(path: string, ttlMs = 60_000): Promise<T> {
   const hit = cache.get(path);
   if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
 
-  await throttle();
-  const res = await fetch(`${BASE}${path}`, { headers: { "X-Auth-Token": token } });
-  if (res.status === 429) throw new Error("RATE_LIMITED");
-  if (res.status === 403) throw new Error("RESTRICTED");
-  if (!res.ok) throw new Error(`API_ERROR_${res.status}`);
-  const json = (await res.json()) as T;
-  cache.set(path, { at: Date.now(), value: json });
-  return json;
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await throttle();
+    const res = await fetch(`${BASE}${path}`, { headers: { "X-Auth-Token": token } });
+    lastStatus = res.status;
+    if (res.status === 429) {
+      // Back off harder than the rolling window so the next leagues can still load.
+      await new Promise((r) => setTimeout(r, 4_000 + attempt * 3_000));
+      continue;
+    }
+    if (res.status === 403) throw new Error("RESTRICTED");
+    if (!res.ok) throw new Error(`API_ERROR_${res.status}`);
+    const json = (await res.json()) as T;
+    cache.set(path, { at: Date.now(), value: json });
+    return json;
+  }
+  throw new Error(lastStatus === 429 ? "RATE_LIMITED" : `API_ERROR_${lastStatus}`);
 }
 
 /** Fire-and-forget friendly: returns null on any failure instead of throwing. */
@@ -129,17 +142,44 @@ function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+/** YYYY-MM-DD for a moment in a given IANA timezone (en-CA → ISO-like). */
+function ymdInTimeZone(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/** Shift a YYYY-MM-DD calendar date by N days (pure date arithmetic). */
+function addCalendarDays(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y!, (m ?? 1) - 1, (d ?? 1) + days));
+  return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Board window in Africa/Nairobi: yesterday → day after tomorrow.
+ * football-data `dateTo` is exclusive, so end is Nairobi-today + 3.
+ */
+function feedWindow() {
+  const todayNairobi = ymdInTimeZone(new Date(), "Africa/Nairobi");
+  return {
+    from: addCalendarDays(todayNairobi, -1),
+    to: addCalendarDays(todayNairobi, 3),
+  };
+}
+
 export async function fetchUpcoming(code: string): Promise<Fixture[]> {
-  const from = new Date();
-  const to = new Date(Date.now() + 21 * 86_400_000);
+  const { from, to } = feedWindow();
   const data = await api<{ matches: ApiMatch[] }>(
-    `/competitions/${code}/matches?dateFrom=${isoDate(from)}&dateTo=${isoDate(to)}`,
+    `/competitions/${code}/matches?dateFrom=${from}&dateTo=${to}`,
     120_000,
   );
   return data.matches
     .filter((m) => m.status === "SCHEDULED" || m.status === "TIMED")
     .sort((a, b) => a.utcDate.localeCompare(b.utcDate))
-    .slice(0, 40)
     .map(toFixture);
 }
 
@@ -578,26 +618,20 @@ function priceFixtures(
 
 const FEED_STATUSES = new Set(["SCHEDULED", "TIMED", "IN_PLAY", "PAUSED", "FINISHED"]);
 
-export async function fetchCompetitionFeed(code: string, days = 21) {
-  const from = isoDate(new Date());
-  const to = isoDate(new Date(Date.now() + days * 86_400_000));
+export async function fetchCompetitionFeed(code: string, _days = 3) {
+  const { from, to } = feedWindow();
+  // Matches list is the critical path — cache longer so refreshes rarely re-hit the API.
   const matches = await api<{ matches: ApiMatch[] }>(
     `/competitions/${code}/matches?dateFrom=${from}&dateTo=${to}`,
-    600_000,
+    180_000,
   );
   const fixtures = matches.matches
-    .filter((m) => {
-      if (!FEED_STATUSES.has(m.status)) return false;
-      // Keep completed/in-play games only while they are still "today's board".
-      if (m.status === "FINISHED" || m.status === "IN_PLAY" || m.status === "PAUSED") {
-        return Date.now() - new Date(m.utcDate).getTime() < 30 * 3_600_000;
-      }
-      return true;
-    })
+    .filter((m) => FEED_STATUSES.has(m.status))
     .sort((a, b) => a.utcDate.localeCompare(b.utcDate))
-    .slice(0, 60)
     .map(toFixture);
 
+  // Fixtures already loaded — strength/news/form are best-effort so rate limits
+  // never blank the board.
   let strength: LeagueStrength | null = null;
   try {
     strength = await fetchLeagueStrength(code);
@@ -605,11 +639,8 @@ export async function fetchCompetitionFeed(code: string, days = 21) {
     strength = null;
   }
 
-  const advantage = await homeAdvantageFor(code, strength);
+  const advantage = await homeAdvantageFor(code, strength).catch(() => 1.12);
 
-  // ESPN-sourced extras that sharpen the board's predictions beyond the
-  // season standings alone. Best effort: an ESPN outage just falls back to
-  // standings-only pricing, same as before this was added.
   let extras: PriceExtras = {};
   if (strength) {
     const teamNames = [...new Set(strength.rows.map((r) => r.team.name))];
@@ -639,13 +670,15 @@ async function homeAdvantageFor(code: string, strength: LeagueStrength | null): 
   return fromTable ?? fromRecent ?? 1.12;
 }
 
-export async function fetchFeed(codes: string[], days = 21): Promise<Feed> {
-  const wanted = codes.slice(0, 13);
+export async function fetchFeed(codes: string[], days = 3): Promise<Feed> {
+  // Cap concurrent leagues so free-tier 10/min is not blown by one board load.
+  const wanted = codes.slice(0, 8);
   const fixtures: FeedFixture[] = [];
   const competitions: CompetitionStatus[] = [];
-  const deadline = Date.now() + 25_000;
+  const deadline = Date.now() + 55_000;
 
-  for (const code of wanted) {
+  for (let i = 0; i < wanted.length; i += 1) {
+    const code = wanted[i]!;
     const name = COMPETITIONS.find((c) => c.code === code)?.name ?? code;
     if (Date.now() > deadline) {
       competitions.push({ code, name, error: "RATE_LIMITED", modelled: false });
@@ -657,6 +690,10 @@ export async function fetchFeed(codes: string[], days = 21): Promise<Feed> {
       competitions.push({ code, name, error: null, modelled: result.modelled });
     } catch (error) {
       competitions.push({ code, name, error: (error as Error).message, modelled: false });
+    }
+    // Small gap between leagues so throttle recovers instead of stacking 429s.
+    if (i < wanted.length - 1) {
+      await new Promise((r) => setTimeout(r, 400));
     }
   }
 
