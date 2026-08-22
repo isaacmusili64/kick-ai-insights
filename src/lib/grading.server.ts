@@ -5,6 +5,7 @@
 
 import { FREE_COMPETITIONS, COMPETITIONS, fetchCompetitionFeed, fetchResults } from "./football.server";
 import { fetchEspnResult } from "./espn.server";
+import { dayKeyOf, todayKey } from "./format";
 
 type LoggedPick = {
   fixture_id: number;
@@ -27,7 +28,25 @@ const MARKET_RULES: Record<string, (pick: string, home: number, away: number) =>
   btts: (pick, h, a) => (pick === "YES" ? h > 0 && a > 0 : pick === "NO" ? h === 0 || a === 0 : null),
 };
 
-function picksFromFixture(f: Awaited<ReturnType<typeof fetchCompetitionFeed>>["fixtures"][number]): LoggedPick[] {
+function picksFromFixture(f: {
+  id: number;
+  competitionCode: string;
+  utcDate: string;
+  status: string;
+  home: { name: string };
+  away: { name: string };
+  prediction: {
+    homeWin: number;
+    draw: number;
+    awayWin: number;
+    over25: number;
+    under25: number;
+    bttsYes: number;
+    bttsNo: number;
+    expectedHomeGoals: number;
+    expectedAwayGoals: number;
+  } | null;
+}): LoggedPick[] {
   const p = f.prediction;
   if (!p) return [];
   const base = {
@@ -66,6 +85,10 @@ export type GradingReport = {
   logged: number;
   graded: number;
   competitions: string[];
+  /** Nairobi calendar day used for logging */
+  logDay: string;
+  candidates: number;
+  skippedNoModel: number;
   errors: string[];
 };
 
@@ -76,15 +99,26 @@ export async function runDailyGrading(codes?: string[]): Promise<GradingReport> 
   );
   const errors: string[] = [];
   const rows: LoggedPick[] = [];
-  const today = new Date().toISOString().slice(0, 10);
+  // Align with the board: "today" is Africa/Nairobi, not UTC.
+  const logDay = todayKey();
+  let candidates = 0;
+  let skippedNoModel = 0;
 
   for (const code of wanted) {
     try {
-      const feed = await fetchCompetitionFeed(code, 2);
+      const feed = await fetchCompetitionFeed(code);
       for (const f of feed.fixtures) {
-        if (f.utcDate.slice(0, 10) !== today) continue;
-        if (f.status !== "SCHEDULED" && f.status !== "TIMED") continue;
-        rows.push(...picksFromFixture(f));
+        // Kickoff calendar day in Nairobi must be today.
+        if (dayKeyOf(f.utcDate) !== logDay) continue;
+        // Log anything not yet finished (scheduled, timed, or about to kick off).
+        if (f.status === "FINISHED" || f.status === "POSTPONED" || f.status === "CANCELLED") continue;
+        candidates += 1;
+        const picks = picksFromFixture(f);
+        if (!picks.length) {
+          skippedNoModel += 1;
+          continue;
+        }
+        rows.push(...picks);
       }
     } catch (error) {
       errors.push(`${code}: ${(error as Error).message}`);
@@ -99,17 +133,25 @@ export async function runDailyGrading(codes?: string[]): Promise<GradingReport> 
       .from("prediction_log")
       .select("fixture_id, market")
       .in("fixture_id", ids);
-    const seen = new Set((existing ?? []).map((e) => `${e.fixture_id}:${e.market}`));
+
+    const seen = new Set((existing ?? []).map((r: { fixture_id: number; market: string }) => `${r.fixture_id}:${r.market}`));
     const fresh = rows.filter((r) => !seen.has(`${r.fixture_id}:${r.market}`));
+
     if (fresh.length) {
-      const { error } = await supabaseAdmin.from("prediction_log").insert(fresh);
+      const { error } = await supabaseAdmin.from("prediction_log").insert(
+        fresh.map((r) => ({
+          ...r,
+          status: "pending",
+          logged_at: new Date().toISOString(),
+        })),
+      );
       if (error) errors.push(`insert: ${error.message}`);
       else logged = fresh.length;
     }
   }
 
-  // Grade pending picks whose kickoff is at least 2.5h in the past.
-  const cutoff = new Date(Date.now() - 150 * 60_000).toISOString();
+  // Grade pending picks whose kickoff was more than ~2.5h ago.
+  const cutoff = new Date(Date.now() - 2.5 * 3_600_000).toISOString();
   const { data: pending } = await supabaseAdmin
     .from("prediction_log")
     .select("id, fixture_id, market, pick, competition_code, home_team, away_team, kickoff")
@@ -120,24 +162,22 @@ export async function runDailyGrading(codes?: string[]): Promise<GradingReport> 
   let graded = 0;
   const pendingRows = pending ?? [];
   if (pendingRows.length) {
-    const ids = [...new Set(pendingRows.map((r) => r.fixture_id))];
+    const ids = [...new Set(pendingRows.map((r: { fixture_id: number }) => r.fixture_id))];
     const results = await fetchResults(ids).catch((error) => {
       errors.push(`football-data results: ${(error as Error).message}`);
       return [];
     });
     const byId = new Map(results.map((r) => [r.id, r]));
 
-    // ESPN fallback for fixtures football-data couldn't resolve (rate limit,
-    // key issue, more than 20 pending, or not finished there yet), matched
-    // by team name and kickoff day. Best effort: a miss just stays pending
-    // and is retried on the next run.
-    const unresolved = [...new Map(pendingRows.map((r) => [r.fixture_id, r])).values()].filter((r) => {
-      const found = byId.get(r.fixture_id);
-      return !found || found.status !== "FINISHED" || found.homeGoals < 0;
-    });
+    const unresolved = [...new Map(pendingRows.map((r: { fixture_id: number }) => [r.fixture_id, r])).values()].filter(
+      (r: { fixture_id: number }) => {
+        const found = byId.get(r.fixture_id);
+        return !found || found.status !== "FINISHED" || found.homeGoals < 0;
+      },
+    );
     if (unresolved.length) {
       const espnResults = await Promise.all(
-        unresolved.map(async (r) => {
+        unresolved.map(async (r: { fixture_id: number; competition_code: string; home_team: string; away_team: string; kickoff: string }) => {
           const result = await fetchEspnResult(r.competition_code, r.home_team, r.away_team, r.kickoff).catch(
             () => null,
           );
@@ -172,5 +212,5 @@ export async function runDailyGrading(codes?: string[]): Promise<GradingReport> 
     }
   }
 
-  return { logged, graded, competitions: wanted, errors };
+  return { logged, graded, competitions: wanted, logDay, candidates, skippedNoModel, errors };
 }
