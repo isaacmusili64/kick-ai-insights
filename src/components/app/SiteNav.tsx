@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { History, Layers, LineChart, Sparkles } from "lucide-react";
+import { BookOpen, History, Layers, LineChart, Sparkles } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
 import { usePro } from "@/lib/pro";
@@ -7,9 +7,10 @@ import { ThemeToggle } from "./ThemeToggle";
 
 const LINKS = [
   { to: "/" as const, label: "Predictions", icon: LineChart },
-  { to: "/acca" as const, label: "Today's accas", icon: Layers },
-  { to: "/performance" as const, label: "Track record", icon: History },
-  { to: "/pro" as const, label: "Go Pro", icon: Sparkles },
+  { to: "/acca" as const, label: "Accas", icon: Layers },
+  { to: "/blog" as const, label: "Blog", icon: BookOpen },
+  { to: "/performance" as const, label: "Record", icon: History },
+  { to: "/pro" as const, label: "Pro", icon: Sparkles },
 ];
 
 export function SiteNav() {
@@ -82,7 +83,7 @@ export function SiteNav() {
         </div>
       </header>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
         {LINKS.map((l) => (
           <Link
             key={l.to}
@@ -103,26 +104,69 @@ export function SiteNav() {
 export function SiteFooter() {
   return (
     <footer className="border-t border-border px-4 py-8 pb-24 sm:pb-8">
-      <div className="mx-auto max-w-6xl space-y-3 text-xs text-muted-foreground">
-        <p className="font-semibold text-foreground">PitchModel</p>
-        <p>
-          Every probability is worked out from live league data and checked against results on our
-          public track record. Predictions are statistical analysis, not betting advice. 18+.
-        </p>
-        <nav className="flex flex-wrap gap-x-4 gap-y-1">
-          <Link to="/performance" className="font-medium hover:text-foreground">
-            Track record
-          </Link>
-          <Link to="/pro" className="font-medium hover:text-foreground">
-            Pro passes
-          </Link>
-          <Link to="/privacy-policy" className="font-medium hover:text-foreground">
-            Privacy policy
-          </Link>
-          <Link to="/refund-policy" className="font-medium hover:text-foreground">
-            Refund policy (no refunds)
-          </Link>
-        </nav>
+      <div className="mx-auto grid max-w-6xl gap-8 text-xs text-muted-foreground sm:grid-cols-3">
+        <div className="space-y-3 sm:col-span-1">
+          <p className="font-semibold text-foreground">PitchModel</p>
+          <p>
+            Every probability is worked out from live league data and checked against results on our
+            public track record. Predictions are statistical analysis, not betting advice. 18+.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <p className="font-semibold text-foreground">Site</p>
+          <nav className="flex flex-col gap-1.5">
+            <Link to="/blog" className="font-medium hover:text-foreground">
+              Blog
+            </Link>
+            <Link to="/contact" className="font-medium hover:text-foreground">
+              Contact
+            </Link>
+            <Link to="/performance" className="font-medium hover:text-foreground">
+              Track record
+            </Link>
+            <Link to="/pro" className="font-medium hover:text-foreground">
+              Pro passes
+            </Link>
+            <Link to="/privacy-policy" className="font-medium hover:text-foreground">
+              Privacy policy
+            </Link>
+            <Link to="/refund-policy" className="font-medium hover:text-foreground">
+              Refund policy (no refunds)
+            </Link>
+          </nav>
+        </div>
+        <div className="space-y-2">
+          <p className="font-semibold text-foreground">Resources</p>
+          <nav className="flex flex-col gap-1.5">
+            <a
+              href="https://www.football-data.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium hover:text-foreground"
+            >
+              football-data.org
+            </a>
+            <a
+              href="https://www.statsbomb.com/what-is-statsbomb-data/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium hover:text-foreground"
+            >
+              StatsBomb open data notes
+            </a>
+            <a
+              href="https://en.wikipedia.org/wiki/Dixon%E2%80%93Coles_model"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium hover:text-foreground"
+            >
+              Dixon–Coles model (overview)
+            </a>
+            <Link to="/blog/how-pitchmodel-prices-a-match" className="font-medium hover:text-foreground">
+              How we price a match
+            </Link>
+          </nav>
+        </div>
       </div>
     </footer>
   );
