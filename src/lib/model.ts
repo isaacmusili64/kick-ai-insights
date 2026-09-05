@@ -128,7 +128,11 @@ export type ExtendedPrediction = Prediction & {
   awayOver15: number;
   /** Normalised score probabilities, rows = home goals 0..5, cols = away goals 0..5. */
   scoreMatrix: number[][];
+  /** Most likely score that agrees with the model's leading result. */
+  likelyScore: string;
+  likelyScoreProbability: number;
 };
+
 
 export function predict(
   home: TeamModel,
