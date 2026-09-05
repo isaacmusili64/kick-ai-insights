@@ -792,36 +792,19 @@ export async function fetchAnalysis(matchId: number) {
 
   const advantage = await homeAdvantageFor(fixture.competitionCode, strength);
 
-  // Match-page prediction blends the season table view (venue splits + form)
-  // with a recency-weighted read of each side's last dozen games.
-  const [priced] = priceFixtures([fixture], strength, advantage);
-  let prediction = priced?.prediction ?? null;
-
-  const histGames = (homeHistory?.leagueGoalGames ?? 0) + (awayHistory?.leagueGoalGames ?? 0);
-  const histAvg = histGames
-    ? ((homeHistory?.leagueGoalSum ?? 0) + (awayHistory?.leagueGoalSum ?? 0)) / histGames / 2
-    : null;
-  const leagueAvgGoals = strength?.leagueAvgGoals ?? histAvg ?? 1.35;
-
-  if (homeHistory?.matches.length && awayHistory?.matches.length) {
-    const homeRecent = buildTeamModel(homeHistory.matches, leagueAvgGoals);
-    const awayRecent = buildTeamModel(awayHistory.matches, leagueAvgGoals);
-    const homeTable = table?.home ? teamModelFromStanding(table.home, leagueAvgGoals, "home") : null;
-    const awayTable = table?.away ? teamModelFromStanding(table.away, leagueAvgGoals, "away") : null;
-    prediction = predict(
-      applyTeamNews(homeTable ? blendModels(homeTable, homeRecent, 0.55) : homeRecent, news.home),
-      applyTeamNews(awayTable ? blendModels(awayTable, awayRecent, 0.55) : awayRecent, news.away),
-      leagueAvgGoals,
-      advantage,
-    );
-  } else if (prediction && table?.home && table?.away) {
-    prediction = predict(
-      applyTeamNews(teamModelFromStanding(table.home, leagueAvgGoals, "home"), news.home),
-      applyTeamNews(teamModelFromStanding(table.away, leagueAvgGoals, "away"), news.away),
-      leagueAvgGoals,
-      advantage,
-    );
+  // Match page must agree with the board: price through the exact same path
+  // (standings + ESPN recent form + team news) the feed uses.
+  let extras: PriceExtras = {};
+  if (strength) {
+    const teamNames = [...new Set(strength.rows.map((r) => r.team.name))];
+    const [newsByTeam, recentByTeam] = await Promise.all([
+      fetchLeagueNewsFor(fixture.competitionCode, teamNames).catch(() => new Map<string, TeamNews>()),
+      fetchEspnRecentForm(fixture.competitionCode, teamNames).catch(() => new Map<string, TeamMatch[]>()),
+    ]);
+    extras = { newsByTeam, recentByTeam };
   }
+  const [priced] = priceFixtures([fixture], strength, advantage, extras);
+  const prediction = priced?.prediction ?? null;
 
   return {
     fixture,
