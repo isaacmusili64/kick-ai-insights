@@ -142,8 +142,8 @@ export async function runDailyGrading(codes?: string[]): Promise<GradingReport> 
         fresh.map((r) => ({
           ...r,
           status: "pending",
-          logged_at: new Date().toISOString(),
         })),
+
       );
       if (error) errors.push(`insert: ${error.message}`);
       else logged = fresh.length;
