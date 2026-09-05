@@ -228,6 +228,9 @@ export function predict(
     expectedHomeGoals: lambdaHome,
     expectedAwayGoals: lambdaAway,
     topScores,
+    likelyScore: likely.score,
+    likelyScoreProbability: likely.probability,
+
     over25,
     under25: 1 - over25,
     bttsYes,
