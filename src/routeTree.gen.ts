@@ -17,6 +17,7 @@ import { Route as PerformanceRouteImport } from './routes/performance'
 import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
 import { Route as ProRouteImport } from './routes/pro'
 import { Route as RefundPolicyRouteImport } from './routes/refund-policy'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as BlogIndexRouteImport } from './routes/blog.index'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 import { Route as MatchMatchIdRouteImport } from './routes/match.$matchId'
@@ -63,6 +64,11 @@ const RefundPolicyRoute = RefundPolicyRouteImport.update({
   path: '/refund-policy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BlogIndexRoute = BlogIndexRouteImport.update({
   id: '/blog/',
   path: '/blog/',
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
   '/refund-policy': typeof RefundPolicyRoute
+  '/terms': typeof TermsRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/blog/': typeof BlogIndexRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByTo {
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
   '/refund-policy': typeof RefundPolicyRoute
+  '/terms': typeof TermsRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/blog': typeof BlogIndexRoute
@@ -129,6 +137,7 @@ export interface FileRoutesById {
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
   '/refund-policy': typeof RefundPolicyRoute
+  '/terms': typeof TermsRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/match/$matchId': typeof MatchMatchIdRoute
   '/blog/': typeof BlogIndexRoute
@@ -146,6 +155,7 @@ export interface FileRouteTypes {
     | '/privacy-policy'
     | '/pro'
     | '/refund-policy'
+    | '/terms'
     | '/blog/$slug'
     | '/match/$matchId'
     | '/blog/'
@@ -161,6 +171,7 @@ export interface FileRouteTypes {
     | '/privacy-policy'
     | '/pro'
     | '/refund-policy'
+    | '/terms'
     | '/blog/$slug'
     | '/match/$matchId'
     | '/blog'
@@ -176,6 +187,7 @@ export interface FileRouteTypes {
     | '/privacy-policy'
     | '/pro'
     | '/refund-policy'
+    | '/terms'
     | '/blog/$slug'
     | '/match/$matchId'
     | '/blog/'
@@ -192,6 +204,7 @@ export interface RootRouteChildren {
   PrivacyPolicyRoute: typeof PrivacyPolicyRoute
   ProRoute: typeof ProRoute
   RefundPolicyRoute: typeof RefundPolicyRoute
+  TermsRoute: typeof TermsRoute
   BlogSlugRoute: typeof BlogSlugRoute
   MatchMatchIdRoute: typeof MatchMatchIdRoute
   BlogIndexRoute: typeof BlogIndexRoute
@@ -257,6 +270,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RefundPolicyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/blog/': {
       id: '/blog/'
       path: '/blog'
@@ -304,6 +324,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyPolicyRoute: PrivacyPolicyRoute,
   ProRoute: ProRoute,
   RefundPolicyRoute: RefundPolicyRoute,
+  TermsRoute: TermsRoute,
   BlogSlugRoute: BlogSlugRoute,
   MatchMatchIdRoute: MatchMatchIdRoute,
   BlogIndexRoute: BlogIndexRoute,
