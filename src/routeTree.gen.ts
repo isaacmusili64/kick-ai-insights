@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccaRouteImport } from './routes/acca'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as BuilderRouteImport } from './routes/builder'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as PerformanceRouteImport } from './routes/performance'
 import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
@@ -37,6 +38,11 @@ const AccaRoute = AccaRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BuilderRoute = BuilderRouteImport.update({
+  id: '/builder',
+  path: '/builder',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ContactRoute = ContactRouteImport.update({
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/acca': typeof AccaRoute
   '/auth': typeof AuthRoute
+  '/builder': typeof BuilderRoute
   '/contact': typeof ContactRoute
   '/performance': typeof PerformanceRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
@@ -115,6 +122,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/acca': typeof AccaRoute
   '/auth': typeof AuthRoute
+  '/builder': typeof BuilderRoute
   '/contact': typeof ContactRoute
   '/performance': typeof PerformanceRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
@@ -132,6 +140,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/acca': typeof AccaRoute
   '/auth': typeof AuthRoute
+  '/builder': typeof BuilderRoute
   '/contact': typeof ContactRoute
   '/performance': typeof PerformanceRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
@@ -150,6 +159,7 @@ export interface FileRouteTypes {
     | '/'
     | '/acca'
     | '/auth'
+    | '/builder'
     | '/contact'
     | '/performance'
     | '/privacy-policy'
@@ -166,6 +176,7 @@ export interface FileRouteTypes {
     | '/'
     | '/acca'
     | '/auth'
+    | '/builder'
     | '/contact'
     | '/performance'
     | '/privacy-policy'
@@ -182,6 +193,7 @@ export interface FileRouteTypes {
     | '/'
     | '/acca'
     | '/auth'
+    | '/builder'
     | '/contact'
     | '/performance'
     | '/privacy-policy'
@@ -199,6 +211,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccaRoute: typeof AccaRoute
   AuthRoute: typeof AuthRoute
+  BuilderRoute: typeof BuilderRoute
   ContactRoute: typeof ContactRoute
   PerformanceRoute: typeof PerformanceRoute
   PrivacyPolicyRoute: typeof PrivacyPolicyRoute
@@ -233,6 +246,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/builder': {
+      id: '/builder'
+      path: '/builder'
+      fullPath: '/builder'
+      preLoaderRoute: typeof BuilderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contact': {
@@ -319,6 +339,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccaRoute: AccaRoute,
   AuthRoute: AuthRoute,
+  BuilderRoute: BuilderRoute,
   ContactRoute: ContactRoute,
   PerformanceRoute: PerformanceRoute,
   PrivacyPolicyRoute: PrivacyPolicyRoute,
