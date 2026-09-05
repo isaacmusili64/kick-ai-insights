@@ -207,7 +207,17 @@ export function predict(
     }
   }
 
-  const topScores = scores.sort((x, y) => y.probability - x.probability).slice(0, 4);
+  const sorted = scores.sort((x, y) => y.probability - x.probability);
+  const topScores = sorted.slice(0, 4);
+  // Pick the most likely scoreline that agrees with the model's leading result,
+  // so the headline score never contradicts the headline pick.
+  const leading = homeWin >= draw && homeWin >= awayWin ? "home" : awayWin >= draw ? "away" : "draw";
+  const agrees = (s: string) => {
+    const [h, a] = s.split("-").map(Number) as [number, number];
+    return leading === "home" ? h > a : leading === "away" ? a > h : h === a;
+  };
+  const likely = sorted.find((s) => agrees(s.score)) ?? sorted[0]!;
+
   const spread = Math.max(homeWin, draw, awayWin);
   const sampleQuality = Math.min(1, (home.sample + away.sample) / 20);
 
