@@ -162,7 +162,11 @@ export function SiteFooter() {
             >
               Dixon–Coles model (overview)
             </a>
-            <Link to="/blog/how-pitchmodel-prices-a-match" className="font-medium hover:text-foreground">
+            <Link
+              to="/blog/$slug"
+              params={{ slug: "how-pitchmodel-prices-a-match" }}
+              className="font-medium hover:text-foreground"
+            >
               How we price a match
             </Link>
           </nav>

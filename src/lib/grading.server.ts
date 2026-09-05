@@ -142,8 +142,8 @@ export async function runDailyGrading(codes?: string[]): Promise<GradingReport> 
         fresh.map((r) => ({
           ...r,
           status: "pending",
-          logged_at: new Date().toISOString(),
         })),
+
       );
       if (error) errors.push(`insert: ${error.message}`);
       else logged = fresh.length;
@@ -169,15 +169,22 @@ export async function runDailyGrading(codes?: string[]): Promise<GradingReport> 
     });
     const byId = new Map(results.map((r) => [r.id, r]));
 
-    const unresolved = [...new Map(pendingRows.map((r: { fixture_id: number }) => [r.fixture_id, r])).values()].filter(
-      (r: { fixture_id: number }) => {
+    type PendingRow = {
+      fixture_id: number;
+      competition_code: string;
+      home_team: string;
+      away_team: string;
+      kickoff: string;
+    };
+    const unresolved = [
+      ...new Map((pendingRows as PendingRow[]).map((r) => [r.fixture_id, r])).values(),
+    ].filter((r) => {
         const found = byId.get(r.fixture_id);
-        return !found || found.status !== "FINISHED" || found.homeGoals < 0;
-      },
-    );
+      return !found || found.status !== "FINISHED" || found.homeGoals < 0;
+    });
     if (unresolved.length) {
       const espnResults = await Promise.all(
-        unresolved.map(async (r: { fixture_id: number; competition_code: string; home_team: string; away_team: string; kickoff: string }) => {
+        unresolved.map(async (r) => {
           const result = await fetchEspnResult(r.competition_code, r.home_team, r.away_team, r.kickoff).catch(
             () => null,
           );

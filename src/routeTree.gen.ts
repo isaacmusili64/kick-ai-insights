@@ -12,10 +12,15 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccaRouteImport } from './routes/acca'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as BuilderRouteImport } from './routes/builder'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as PerformanceRouteImport } from './routes/performance'
 import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
 import { Route as ProRouteImport } from './routes/pro'
 import { Route as RefundPolicyRouteImport } from './routes/refund-policy'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as BlogIndexRouteImport } from './routes/blog.index'
+import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 import { Route as MatchMatchIdRouteImport } from './routes/match.$matchId'
 import { Route as ApiPublicCronGradeRouteImport } from './routes/api/public/cron/grade'
 import { Route as ApiPublicMpesaCallbackRouteImport } from './routes/api/public/mpesa/callback'
@@ -33,6 +38,16 @@ const AccaRoute = AccaRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BuilderRoute = BuilderRouteImport.update({
+  id: '/builder',
+  path: '/builder',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PerformanceRoute = PerformanceRouteImport.update({
@@ -55,6 +70,21 @@ const RefundPolicyRoute = RefundPolicyRouteImport.update({
   path: '/refund-policy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogIndexRoute = BlogIndexRouteImport.update({
+  id: '/blog/',
+  path: '/blog/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogSlugRoute = BlogSlugRouteImport.update({
+  id: '/blog/$slug',
+  path: '/blog/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MatchMatchIdRoute = MatchMatchIdRouteImport.update({
   id: '/match/$matchId',
   path: '/match/$matchId',
@@ -75,11 +105,16 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/acca': typeof AccaRoute
   '/auth': typeof AuthRoute
+  '/builder': typeof BuilderRoute
+  '/contact': typeof ContactRoute
   '/performance': typeof PerformanceRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
   '/refund-policy': typeof RefundPolicyRoute
+  '/terms': typeof TermsRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/match/$matchId': typeof MatchMatchIdRoute
+  '/blog/': typeof BlogIndexRoute
   '/api/public/cron/grade': typeof ApiPublicCronGradeRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
 }
@@ -87,11 +122,16 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/acca': typeof AccaRoute
   '/auth': typeof AuthRoute
+  '/builder': typeof BuilderRoute
+  '/contact': typeof ContactRoute
   '/performance': typeof PerformanceRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
   '/refund-policy': typeof RefundPolicyRoute
+  '/terms': typeof TermsRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/match/$matchId': typeof MatchMatchIdRoute
+  '/blog': typeof BlogIndexRoute
   '/api/public/cron/grade': typeof ApiPublicCronGradeRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
 }
@@ -100,11 +140,16 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/acca': typeof AccaRoute
   '/auth': typeof AuthRoute
+  '/builder': typeof BuilderRoute
+  '/contact': typeof ContactRoute
   '/performance': typeof PerformanceRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/pro': typeof ProRoute
   '/refund-policy': typeof RefundPolicyRoute
+  '/terms': typeof TermsRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/match/$matchId': typeof MatchMatchIdRoute
+  '/blog/': typeof BlogIndexRoute
   '/api/public/cron/grade': typeof ApiPublicCronGradeRoute
   '/api/public/mpesa/callback': typeof ApiPublicMpesaCallbackRoute
 }
@@ -114,11 +159,16 @@ export interface FileRouteTypes {
     | '/'
     | '/acca'
     | '/auth'
+    | '/builder'
+    | '/contact'
     | '/performance'
     | '/privacy-policy'
     | '/pro'
     | '/refund-policy'
+    | '/terms'
+    | '/blog/$slug'
     | '/match/$matchId'
+    | '/blog/'
     | '/api/public/cron/grade'
     | '/api/public/mpesa/callback'
   fileRoutesByTo: FileRoutesByTo
@@ -126,11 +176,16 @@ export interface FileRouteTypes {
     | '/'
     | '/acca'
     | '/auth'
+    | '/builder'
+    | '/contact'
     | '/performance'
     | '/privacy-policy'
     | '/pro'
     | '/refund-policy'
+    | '/terms'
+    | '/blog/$slug'
     | '/match/$matchId'
+    | '/blog'
     | '/api/public/cron/grade'
     | '/api/public/mpesa/callback'
   id:
@@ -138,11 +193,16 @@ export interface FileRouteTypes {
     | '/'
     | '/acca'
     | '/auth'
+    | '/builder'
+    | '/contact'
     | '/performance'
     | '/privacy-policy'
     | '/pro'
     | '/refund-policy'
+    | '/terms'
+    | '/blog/$slug'
     | '/match/$matchId'
+    | '/blog/'
     | '/api/public/cron/grade'
     | '/api/public/mpesa/callback'
   fileRoutesById: FileRoutesById
@@ -151,11 +211,16 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccaRoute: typeof AccaRoute
   AuthRoute: typeof AuthRoute
+  BuilderRoute: typeof BuilderRoute
+  ContactRoute: typeof ContactRoute
   PerformanceRoute: typeof PerformanceRoute
   PrivacyPolicyRoute: typeof PrivacyPolicyRoute
   ProRoute: typeof ProRoute
   RefundPolicyRoute: typeof RefundPolicyRoute
+  TermsRoute: typeof TermsRoute
+  BlogSlugRoute: typeof BlogSlugRoute
   MatchMatchIdRoute: typeof MatchMatchIdRoute
+  BlogIndexRoute: typeof BlogIndexRoute
   ApiPublicCronGradeRoute: typeof ApiPublicCronGradeRoute
   ApiPublicMpesaCallbackRoute: typeof ApiPublicMpesaCallbackRoute
 }
@@ -181,6 +246,20 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/builder': {
+      id: '/builder'
+      path: '/builder'
+      fullPath: '/builder'
+      preLoaderRoute: typeof BuilderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/performance': {
@@ -211,6 +290,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RefundPolicyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/': {
+      id: '/blog/'
+      path: '/blog'
+      fullPath: '/blog/'
+      preLoaderRoute: typeof BlogIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/$slug': {
+      id: '/blog/$slug'
+      path: '/blog/$slug'
+      fullPath: '/blog/$slug'
+      preLoaderRoute: typeof BlogSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/match/$matchId': {
       id: '/match/$matchId'
       path: '/match/$matchId'
@@ -239,11 +339,16 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccaRoute: AccaRoute,
   AuthRoute: AuthRoute,
+  BuilderRoute: BuilderRoute,
+  ContactRoute: ContactRoute,
   PerformanceRoute: PerformanceRoute,
   PrivacyPolicyRoute: PrivacyPolicyRoute,
   ProRoute: ProRoute,
   RefundPolicyRoute: RefundPolicyRoute,
+  TermsRoute: TermsRoute,
+  BlogSlugRoute: BlogSlugRoute,
   MatchMatchIdRoute: MatchMatchIdRoute,
+  BlogIndexRoute: BlogIndexRoute,
   ApiPublicCronGradeRoute: ApiPublicCronGradeRoute,
   ApiPublicMpesaCallbackRoute: ApiPublicMpesaCallbackRoute,
 }
